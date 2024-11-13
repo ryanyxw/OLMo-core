@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, cast
 
 from beaker import Beaker
+from rich import print
 from torch.distributed.device_mesh import DeviceMesh
 
 from olmo_core.config import Config, StrEnum
@@ -111,10 +112,18 @@ class SubCmd(StrEnum):
             raise NotADirectoryError(self)
 
     def run(self, config: ExperimentConfig):
+        print(config)
+        print(
+            "\n"
+            f"[b blue]Total parameters:[/]                {config.model.num_params:,d}\n"
+            f"[b blue]Non-embedding parameters:[/]        {config.model.num_non_embedding_params:,d}\n"
+            f"[b blue]Active parameters:[/]               {config.model.num_active_params:,d}\n"
+            f"[b blue]Non-embedding active parameters:[/] {config.model.num_non_embedding_active_params:,d}"
+        )
         if self == SubCmd.launch:
             launch(config)
         elif self == SubCmd.dry_run:
-            log.info(config)
+            pass
         elif self == SubCmd.train:
             try:
                 train(config)

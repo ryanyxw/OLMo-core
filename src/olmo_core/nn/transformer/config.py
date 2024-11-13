@@ -269,6 +269,29 @@ class TransformerConfig(Config):
         """
         return self.num_params - self.d_model * self.vocab_size
 
+    @property
+    def num_active_params(self) -> int:
+        """
+        The number of active (inference) parameters.
+        """
+        if "moe" in self.block.name.lower():
+            assert self.block.feed_forward_moe is not None
+            num_dense_params = self.num_params - (
+                self.n_layers * self.block.feed_forward_moe.num_params(self.d_model)
+            )
+            return num_dense_params + (
+                self.n_layers * self.block.feed_forward_moe.num_active_params(self.d_model)
+            )
+        else:
+            return self.num_params
+
+    @property
+    def num_non_embedding_active_params(self) -> int:
+        """
+        The number of active (inference) parameters excluding embeddings.
+        """
+        return self.num_active_params - self.d_model * self.vocab_size
+
     def num_flops_per_token(self, seq_len: int) -> int:
         """
         Get the approximate number of flops per token.

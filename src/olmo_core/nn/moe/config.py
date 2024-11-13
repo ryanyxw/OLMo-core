@@ -172,6 +172,23 @@ class MoEConfig(Config):
 
         return num_params
 
+    def num_active_params(self, d_model: int) -> int:
+        num_params = 0
+
+        # Router.
+        num_params += self.num_experts * d_model
+
+        # Experts.
+        num_params += self.top_k * (2 * d_model * self.hidden_size)
+        if self.name == MoEType.dropless and "glu" in self.activation_fn.lower():
+            num_params += self.top_k * d_model * self.hidden_size
+
+        # Bias.
+        if self.bias:
+            num_params += d_model
+
+        return num_params
+
     def as_megablocks_args(self, *, d_model: int, init_device: str = "cpu"):
         from megablocks.layers.arguments import Arguments  # type: ignore
 

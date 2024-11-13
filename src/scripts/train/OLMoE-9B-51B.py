@@ -1,5 +1,5 @@
 """
-Train a 1B active, 7B total OLMoE model (mixture of experts).
+Train a 9B active, 51B total OLMoE model (mixture of experts).
 Run this script without any arguments to see usage info.
 """
 
@@ -24,10 +24,10 @@ from olmo_core.train.callbacks import (
 
 
 def build_model_config(common: CommonComponents) -> TransformerConfig:
-    model_config = TransformerConfig.olmo_1B(
+    model_config = TransformerConfig.olmo_7B(
         vocab_size=common.tokenizer.padded_vocab_size(),
-        n_layers=16,
-        n_heads=16,
+        n_layers=30,
+        n_heads=32,
         compile=True,
         fused_ops=False,
         block_name=TransformerBlockType.moe_reordered_norm,
@@ -41,11 +41,11 @@ def build_model_config(common: CommonComponents) -> TransformerConfig:
     model_config.block.feed_forward = None
     model_config.block.feed_forward_moe = MoEConfig(
         name=MoEType.dropless,
-        hidden_size=int(0.5 * model_config.d_model),
+        hidden_size=int(0.25 * model_config.d_model),
         activation_fn=MoEActivationFn.swiglu,
         mlp_implementation=MoEMLPImplementation.grouped,
-        num_experts=64,
-        top_k=8,
+        num_experts=128,
+        top_k=16,
         num_layers=model_config.n_layers,
         zloss_weight=0.001,
         loss_weight=0.01,
@@ -58,7 +58,7 @@ def build_model_config(common: CommonComponents) -> TransformerConfig:
 def build_optim_config(common: CommonComponents) -> AdamWConfig:
     del common
     return AdamWConfig(
-        lr=4e-4,
+        lr=3e-4,
         weight_decay=0.1,
         betas=(0.9, 0.95),
         group_overrides=[
@@ -72,7 +72,7 @@ def build_trainer_config(common: CommonComponents) -> TrainerConfig:
     return (
         TrainerConfig(
             save_folder=common.save_folder,
-            rank_microbatch_size=2 * 4096,
+            rank_microbatch_size=1 * 4096,
             save_overwrite=True,
             metrics_collect_interval=10,
             cancel_check_interval=1,
@@ -83,7 +83,7 @@ def build_trainer_config(common: CommonComponents) -> TrainerConfig:
             "checkpointer",
             CheckpointerCallback(
                 save_interval=10_000,
-                ephemeral_save_interval=1000,
+                ephemeral_save_interval=250,
                 save_async=True,
             ),
         )
@@ -96,7 +96,7 @@ def build_trainer_config(common: CommonComponents) -> TrainerConfig:
             CometCallback(
                 name=common.run_name,
                 workspace="ai2",
-                project="OLMo-core-1B",
+                project="OLMo-core-7B",
                 enabled=True,
                 cancel_check_interval=10,
             ),
@@ -106,7 +106,7 @@ def build_trainer_config(common: CommonComponents) -> TrainerConfig:
             WandBCallback(
                 name=common.run_name,
                 entity="ai2-llm",
-                project="OLMo-core-1B",
+                project="OLMo-core-7B",
                 enabled=False,
                 cancel_check_interval=10,
             ),

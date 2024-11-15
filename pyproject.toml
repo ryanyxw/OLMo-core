@@ -13,7 +13,7 @@ authors = [
 requires-python = ">=3.9"
 license = { file = "LICENSE" }
 dependencies = [
-    "numpy",
+    "numpy<2.0",
     "torch>=2.4,<=2.6.0.dev20241009",
     "cached-path",
     "requests",
@@ -22,6 +22,7 @@ dependencies = [
     "omegaconf",
     "safetensors",
     "importlib_resources",
+    "ai2-olmo-eval==0.2.0",
 ]
 
 [project.urls]
@@ -34,8 +35,9 @@ dev = [
     "ruff",
     "mypy>=1.0,<1.4",
     "black>=23.1,<24.0",
-    "isort>=5.12,<5.13",
+    "isort>=5.12,<5.14",
     "pytest",
+    "pytest-memray",
     "pytest-sphinx",
     "pytest-xdist",
     "twine>=1.11.0",
@@ -45,21 +47,24 @@ dev = [
     "boto3",
     "google-cloud-storage",
     "Sphinx>=6.0,<7.0.2",
-    "furo==2023.5.20",
+    "furo==2024.8.6",
     "myst-parser>=1.0,<2.1",
     "sphinx-copybutton==0.5.2",
     "sphinx-autobuild==2021.3.14",
     "sphinx-autodoc-typehints==1.23.3",
 ]
 beaker = [
-    "beaker-py",
+    "beaker-py>=1.32.0",
     "GitPython>=3.0,<4.0",
 ]
 wandb = [
     "wandb",
 ]
+comet = [
+    "comet_ml",
+]
 all = [
-    "ai2-olmo-core[dev,beaker,wandb]",
+    "ai2-olmo-core[dev,beaker,wandb,comet]",
 ]
 
 [tool.setuptools]

@@ -7,6 +7,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [v1.6.3](https://github.com/allenai/OLMo-core/releases/tag/v1.6.3) - 2024-11-15
+
+### Added
+
+- Added `olmo_core.distributed.checkpoint.get_checkpoint_metadata()` function.
+- (BETA) Added flag to compile the optimizer step. So far only tested with AdamW. May not work with other optimizers.
+
+### Fixed
+
+- Old ephemeral checkpoints won't be removed until after the latest ephemeral checkpoint is saved successfully.
+- Made GCS uploads more robust.
+- Fixed single-node training on Google Augusta cluster.
+- `numpy.random.dirichlet()` does not always sum to 1.0, so allow for a small tolerance in validating domain weights.
+
+## [v1.6.2](https://github.com/allenai/OLMo-core/releases/tag/v1.6.2) - 2024-11-08
+
+### Added
+
+- Added option to disable `GarbageCollectorCallback`, not that you'd want to do this usually, but I needed to run an experiment to show how important that callback is.
+
+### Fixed
+
+- Fixed a bug where some default callbacks could be added twice if given a different name by the user.
+- Fixed a bug where some `Trainer` bookkeeping tasks may not complete before `.fit()` returns.
+
+## [v1.6.1](https://github.com/allenai/OLMo-core/releases/tag/v1.6.1) - 2024-11-06
+
+### Added
+
+- Added `retries` field to `BeakerLaunchConfig`.
+- Allow running on Augusta cluster with existing train scripts.
+- Added `olmo_core.utils.logging_configured()` function to check if logging has been configured.
+
+### Fixed
+
+- Fixed a potential distributed deadlock bug when training without a separate CPU-only bookkeeping backend.
+- Removed some unnecessary host-device syncs in `olmo_core.distributed.utils`.
+- Added `Trainer(Config).async_bookkeeping` field to toggle async bookkeeping.
+
+## [v1.6.0](https://github.com/allenai/OLMo-core/releases/tag/v1.6.0) - 2024-11-01
+
+### Added
+
+- Added option to compile the trainer's loss function (`Trainer.compile_loss`).
+- Added `SourceMixtureDataset` for composing a training mixture based on ratios of source datasets.
+- Added `NumpyFSLDatasetMixture` for constructing a `NumpyDatasetBase` from a `SourceMixtureDataset`. Note this is only supported for FSL datasets.
+- Added tests for `SourceMixture*` and `NumpyFSLDatasetMixture`.
+- Added `DownstreamEvaluatorCallbackConfig` class for running in-loop downstream eval via [OLMo-in-loop-evals](https://github.com/allenai/OLMo-in-loop-evals).
+
+### Changed
+
+- Moved some types into `olmo_core.data.types` to avoid some circular dependencies.
+
+### Fixed
+
+- Made GCS client more robust by automatically retrying timeout errors for most operations.
+
+## [v1.5.0](https://github.com/allenai/OLMo-core/releases/tag/v1.5.0) - 2024-10-23
+
+### Added
+
+- Added Google Cloud support for `list_directory()` and `clear_directory()`.
+- Added `CometCallback` for logging training runs to Comet.ml.
+- Added `DataMixBase` class, to allow extending to new data mix groups.
+- Added support for MoE-based models.
+- Added method `DataLoaderBase.get_mock_batch()`.
+- Trainer now starts with a dry-run of a fake batch created by `DataLoaderBase.get_mock_batch()`.
+- Added `Callback.pre_backward()`, `.pre_eval_batch()`, and `.post_eval_batch()` methods.
+- Added `Trainer.model_forward()`, `.get_losses()`, and `.eval_batch()` methods.
+- Added a new `TransformerActivationCheckpointingMode`, "selected_ops" (requires torch 2.5 or newer).
+
 ### Changed
 
 - `BeakerLaunchConfig.setup_steps` should now include steps to clone your repo (which it will by default). This change allows support for private repos.
@@ -14,6 +85,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - `prepare_cli_environment()` now calls `add_cached_path_clients()`.
+- Removed an unnecessary host-device sync.
 
 ## [v1.4.0](https://github.com/allenai/OLMo-core/releases/tag/v1.4.0) - 2024-10-02
 

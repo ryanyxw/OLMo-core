@@ -26,7 +26,7 @@ jobs:
   checks:
     name: ${{ matrix.task.name }}
     runs-on: [ubuntu-latest]
-    timeout-minutes: 5
+    timeout-minutes: 8
     strategy:
       fail-fast: false
       matrix:
@@ -64,7 +64,7 @@ jobs:
               run: make lint-check
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Setup Python environment
         uses: ./.github/actions/setup-venv
@@ -74,7 +74,7 @@ jobs:
 
       - name: Restore mypy cache
         if: matrix.task.name == 'Type check'
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: .mypy_cache
           key: mypy-${{ env.CACHE_PREFIX }}-${{ runner.os }}-${{ matrix.python }}-${{ hashFiles('pyproject.toml') }}-${{ github.ref }}-${{ github.sha }}
@@ -89,7 +89,7 @@ jobs:
 
       - name: Upload package distribution files
         if: matrix.task.name == 'Build'
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: package
           path: dist
@@ -103,21 +103,40 @@ jobs:
   gpu_checks:
     name: ${{ matrix.task.name }}
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         task:
           - name: Test (GPU)
-            run: pytest -v --color=yes --durations=3 -m gpu src/test/ --ignore-glob='src/test/distributed/checkpoint*'
+            image: olmo-core
+            gpus: 2
+            run: |
+              pytest -v --color=yes --durations=3 -m gpu \
+                --ignore-glob='src/test/distributed/checkpoint*' \
+                --ignore-glob='src/test/nn/moe*' \
+                src/test/
 
           - name: Test checkpoint (GPU)
-            run: pytest -v --color=yes --durations=3 -m gpu src/test/distributed/checkpoint*
+            image: olmo-core
+            gpus: 2
+            run: |
+              pytest -v --color=yes --durations=3 -m gpu \
+                src/test/distributed/checkpoint*
+
+          - name: Test MoE (GPU)
+            image: olmo-core
+            gpus: 1
+            run: |
+              pytest -v --color=yes --durations=3 -m gpu \
+                src/test/nn/moe*
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
       - name: Set env vars
         run: |
@@ -142,7 +161,7 @@ jobs:
       - name: Get full image name
         if: env.BEAKER_TOKEN != ''
         run:
-          echo "BEAKER_IMAGE=$(make get-full-beaker-image-name)" >> $GITHUB_ENV
+          echo "BEAKER_IMAGE=$(make get-full-beaker-image-name IMAGE_NAME=${{ matrix.task.image }})" >> $GITHUB_ENV
 
       - name: GPU Tests
         uses: allenai/beaker-run-action@v1.2
@@ -157,16 +176,20 @@ jobs:
                 image:
                   beaker: ${{ env.BEAKER_IMAGE }}
                 context:
-                  priority: low
+                  priority: normal
                   preemptible: true
                 resources:
-                  gpuCount: 2
+                  gpuCount: ${{ matrix.task.gpus }}
                 constraints:
                   cluster:
-                    - ai2/allennlp-cirrascale
-                    - ai2/allennlp-elanding-a100-40g
-                    - ai2/pluto-cirrascale
+                    # H100 clusters
                     - ai2/jupiter-cirrascale-2
+                    - ai2/pluto-cirrascale
+                    - ai2/augusta-google-1
+                    # A100 clusters
+                    - ai2/saturn-cirrascale
+                    - ai2/allennlp-cirrascale
+                    # - ai2/allennlp-elanding-a100-40g
                 envVars:
                   - name: CUBLAS_WORKSPACE_CONFIG
                     value: ":16:8"
@@ -191,7 +214,7 @@ jobs:
     needs: [checks]
     if: startsWith(github.ref, 'refs/tags/')
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -207,7 +230,7 @@ jobs:
           echo "TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
 
       - name: Download package distribution files
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: package
           path: dist
@@ -223,7 +246,7 @@ jobs:
           twine upload -u __token__ -p '${{ secrets.PYPI_TOKEN }}' dist/*
 
       - name: Publish GitHub release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

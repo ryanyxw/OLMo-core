@@ -19,9 +19,11 @@ from beaker import (
     ExperimentSpec,
     Job,
     Priority,
+    RetrySpec,
     TaskResources,
     TaskSpec,
 )
+from rich.prompt import Confirm
 
 from ..config import Config, StrEnum
 from ..distributed.utils import OLMO_SHARED_FS_ENV_VAR
@@ -174,6 +176,11 @@ class BeakerLaunchConfig(Config):
     If the job should be preemptible.
     """
 
+    retries: Optional[int] = None
+    """
+    The number of times to retry the experiment if it fails.
+    """
+
     env_vars: List[BeakerEnvVar] = field(default_factory=list)
     """
     Additional env vars to include.
@@ -309,6 +316,7 @@ class BeakerLaunchConfig(Config):
         entrypoint_script = [
             "#!/usr/bin/env bash",
             "set -exuo pipefail",
+            "[[ -d /var/lib/tcpxo/lib64 ]] && export LD_LIBRARY_PATH=/var/lib/tcpxo/lib64:$LD_LIBRARY_PATH",
             "mkdir -p /olmo-core-runtime",
             "cd /olmo-core-runtime",
             *self.setup_steps,
@@ -331,7 +339,8 @@ class BeakerLaunchConfig(Config):
                 command=["bash", "/olmo-core/entrypoint.sh"],
                 replicas=self.num_nodes if self.num_nodes > 1 else None,
                 leader_selection=self.num_nodes > 1,
-                host_networking=self.num_nodes > 1,
+                host_networking=self.num_nodes > 1
+                or any(["augusta" in cluster for cluster in self.clusters]),
                 propagate_failure=True if self.num_nodes > 1 else None,
                 propagate_preemption=True if self.num_nodes > 1 else None,
                 synchronized_start_timeout="90m" if self.num_nodes > 1 else None,
@@ -359,7 +368,12 @@ class BeakerLaunchConfig(Config):
             for bucket in self.weka_buckets:
                 task_spec = task_spec.with_dataset(bucket.mount, weka=bucket.bucket)
 
-        return ExperimentSpec(description=self.description, budget=self.budget, tasks=[task_spec])
+        return ExperimentSpec(
+            description=self.description,
+            budget=self.budget,
+            tasks=[task_spec],
+            retry=None if not self.retries else RetrySpec(allowed_task_retries=self.retries),
+        )
 
     def _follow_experiment(self, experiment: Experiment):
         # Wait for job to start...
@@ -427,10 +441,14 @@ class BeakerLaunchConfig(Config):
         try:
             self._follow_experiment(experiment)
         except KeyboardInterrupt:
-            log.warning(
-                "Caught keyboard interrupt, you can cancel the experiment on the Beaker UI: "
-                f"{self.beaker.experiment.url(experiment)}"
-            )
-            raise
+            log.warning("Caught keyboard interrupt...")
+            if Confirm.ask("Would you like to cancel the experiment?"):
+                self.beaker.experiment.stop(experiment)
+                log.warning(f"Experiment stopped: {self.beaker.experiment.url(experiment)}")
+            else:
+                log.info(
+                    "You can follow the experiment on the Beaker UI: "
+                    f"{self.beaker.experiment.url(experiment)}"
+                )
 
         return experiment

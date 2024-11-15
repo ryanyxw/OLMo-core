@@ -2,6 +2,7 @@
 Distributed helpers, most of which work in a non-distributed context as well for API unity.
 """
 
+import logging
 import os
 from datetime import timedelta
 from typing import List, Optional, TypeVar
@@ -13,7 +14,7 @@ from torch.distributed.device_mesh import DeviceMesh, init_device_mesh
 
 from ..config import StrEnum
 from ..exceptions import OLMoConfigurationError, OLMoEnvironmentError
-from ..utils import get_default_device, set_env_var
+from ..utils import get_default_device, logging_configured, move_to_device, set_env_var
 
 OLMO_SHARED_FS_ENV_VAR = "OLMO_SHARED_FS"
 OLMO_FS_LOCAL_RANK_ENV_VAR = "FS_LOCAL_RANK"
@@ -21,6 +22,9 @@ OLMO_LOCAL_RANK_ENV_VAR = "LOCAL_RANK"
 OLMO_NUM_NODES_ENV_VAR = "NUM_NODES"
 OLMO_LOCAL_WORLD_SIZE_ENV_VAR = "LOCAL_WORLD_SIZE"
 BEAKER_HOSTNAME_ENV_VAR = "BEAKER_NODE_HOSTNAME"
+
+
+log = logging.getLogger(__name__)
 
 
 def init_distributed(backend: str = "nccl", timeout: timedelta = timedelta(minutes=30)):
@@ -38,16 +42,57 @@ def init_distributed(backend: str = "nccl", timeout: timedelta = timedelta(minut
 
     # Set host-specific env var defaults.
     if _running_in_beaker():
+        multi_node = int(os.environ.get(OLMO_NUM_NODES_ENV_VAR, "1")) > 1
         # See https://beaker-docs.apps.allenai.org/experiments/distributed-training.html
         if "jupiter" in get_node_hostname():
             set_env_var("NCCL_IB_HCA", "^=mlx5_bond_0")
-            if int(os.environ.get(OLMO_NUM_NODES_ENV_VAR, "1")) > 1:
+            if multi_node:
                 # Only for multi-node
                 set_env_var("NCCL_SOCKET_IFNAME", "ib")
         elif "pluto" in get_node_hostname():
             set_env_var("NCCL_IB_HCA", "^=mlx5_1,mlx5_2")
-
-    validate_env_vars()
+        elif "augusta" in get_node_hostname():
+            # NOTE: For single-node training we still need all of these settings and we also
+            # need host networking enabled so that the ethernet interface names don't change.
+            set_env_var("NCCL_CROSS_NIC", "0")
+            set_env_var("NCCL_ALGO", "Ring,Tree")
+            set_env_var("NCCL_PROTO", "Simple")
+            set_env_var("NCCL_MIN_NCHANNELS", "4")
+            set_env_var("NCCL_P2P_NET_CHUNKSIZE", "524288")
+            set_env_var("NCCL_P2P_PCI_CHUNKSIZE", "524288")
+            set_env_var("NCCL_P2P_NVL_CHUNKSIZE", "1048576")
+            set_env_var("NCCL_FASTRAK_NUM_FLOWS", "2")
+            set_env_var("NCCL_FASTRAK_ENABLE_CONTROL_CHANNEL", "0")
+            set_env_var("NCCL_BUFFSIZE", "8388608")
+            set_env_var("NCCL_FASTRAK_USE_SNAP", "1")
+            set_env_var("CUDA_VISIBLE_DEVICES", "0,1,2,3,4,5,6,7")
+            set_env_var("NCCL_NET_GDR_LEVEL", "PIX")
+            set_env_var("NCCL_FASTRAK_ENABLE_HOTPATH_LOGGING", "0")
+            set_env_var("NCCL_FASTRAK_PLUGIN_ACCEPT_TIMEOUT_MS", "600000")
+            set_env_var("NCCL_NVLS_ENABLE", "0")
+            set_env_var("NCCL_USE_SNAP", "1")
+            set_env_var("NCCL_FASTRAK_USE_LLCM", "1")
+            set_env_var("NCCL_FASTRAK_LLCM_DEVICE_DIRECTORY", "/dev/aperture_devices")
+            # NOTE: This path var must be set prior to launching Python
+            #  set_env_var(
+            #      "LD_LIBRARY_PATH",
+            #      "/var/lib/tcpxo/lib64:" + os.environ.get("LD_LIBRARY_PATH", ""),
+            #      override=True,
+            #  )
+            set_env_var("NCCL_TUNER_PLUGIN", "libnccl-tuner.so")
+            set_env_var(
+                "NCCL_TUNER_CONFIG_PATH", "/var/lib/tcpxo/lib64/a3plus_tuner_config.textproto"
+            )
+            set_env_var(
+                "NCCL_SHIMNET_GUEST_CONFIG_CHECKER_CONFIG_FILE",
+                "/var/lib/tcpxo/lib64/a3plus_guest_config.textproto",
+            )
+            set_env_var("NCCL_FASTRAK_CTRL_DEV", "enp0s12")
+            set_env_var(
+                "NCCL_FASTRAK_IFNAME",
+                "enp6s0,enp7s0,enp13s0,enp14s0,enp134s0,enp135s0,enp141s0,enp142s0",
+            )
+            set_env_var("NCCL_SOCKET_IFNAME", "enp0s12")
 
     if backend_supports_cuda(backend):
         # Set CUDA device.
@@ -57,6 +102,18 @@ def init_distributed(backend: str = "nccl", timeout: timedelta = timedelta(minut
         torch.cuda.set_device(device)
 
     dist.init_process_group(backend, timeout=timeout)
+
+    validate_env_vars()
+
+    msg = (
+        f"Global rank {get_rank()} "
+        f"= local rank {get_local_rank()} "
+        f"= file system local rank {get_fs_local_rank()}"
+    )
+    if logging_configured():
+        log.warning(msg)
+    else:
+        print(msg)
 
 
 def validate_env_vars():
@@ -69,12 +126,12 @@ def validate_env_vars():
     if OLMO_LOCAL_RANK_ENV_VAR not in os.environ:
         raise OLMoEnvironmentError(f"Missing env var '{OLMO_LOCAL_RANK_ENV_VAR}'")
 
-    if (
-        os.environ.get(OLMO_SHARED_FS_ENV_VAR) != "1"
-        and os.environ.get(OLMO_FS_LOCAL_RANK_ENV_VAR) is None
+    if os.environ.get(OLMO_SHARED_FS_ENV_VAR) != "1" and (
+        os.environ.get(OLMO_FS_LOCAL_RANK_ENV_VAR) is None
+        and os.environ.get(OLMO_LOCAL_RANK_ENV_VAR) is None
     ):
         raise OLMoEnvironmentError(
-            f"Missing env var '{OLMO_FS_LOCAL_RANK_ENV_VAR}' for non-shared filesystem. "
+            f"Missing env var '{OLMO_FS_LOCAL_RANK_ENV_VAR}'/'{OLMO_LOCAL_RANK_ENV_VAR}' for non-shared filesystem. "
             f"If this is a shared filesystem you can set '{OLMO_SHARED_FS_ENV_VAR}=1' instead."
         )
 
@@ -223,7 +280,7 @@ def synchronize_value(
     """
     if dist.is_available() and dist.is_initialized():
         is_tensor = isinstance(value, torch.Tensor)
-        value_tensor = value.to(device) if is_tensor else torch.tensor(value, device=device)  # type: ignore
+        value_tensor = move_to_device(value, device) if is_tensor else move_to_device(torch.tensor(value), device)  # type: ignore
         dist.broadcast(value_tensor, src, group=group)
         return value_tensor if is_tensor else value_tensor.item()  # type: ignore
     else:
@@ -247,7 +304,7 @@ def all_reduce_value(
     """
     if dist.is_available() and dist.is_initialized():
         is_tensor = isinstance(value, torch.Tensor)
-        value_tensor = value.to(device) if is_tensor else torch.tensor(value, device=device)  # type: ignore
+        value_tensor = move_to_device(value, device) if is_tensor else move_to_device(torch.tensor(value), device)  # type: ignore
         dist.all_reduce(value_tensor, op=op, group=group)
         return value_tensor if is_tensor else value_tensor.item()  # type: ignore
     else:
@@ -268,6 +325,23 @@ def scatter_object(obj: T, src: int = 0, group: Optional[dist.ProcessGroup] = No
     input_list = [obj] * get_world_size(group) if get_rank(group) == src else None
     dist.scatter_object_list(output_list, input_list, src=src, group=group)
     return output_list[0]
+
+
+def all_gather(
+    tensor: torch.Tensor, group: Optional[dist.ProcessGroup] = None
+) -> List[torch.Tensor]:
+    """
+    All-gather tensors from the whole group into a list.
+    """
+    if not is_distributed():
+        return [tensor]
+
+    shapes = all_gather_object(tensor.shape, group=group)
+    output_list = [
+        move_to_device(torch.zeros(shape, dtype=tensor.dtype), tensor.device) for shape in shapes
+    ]
+    dist.all_gather(output_list, tensor, group=group)
+    return output_list
 
 
 def all_gather_object(obj: T, group: Optional[dist.ProcessGroup] = None) -> List[T]:

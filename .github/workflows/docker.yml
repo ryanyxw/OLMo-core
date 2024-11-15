@@ -5,39 +5,49 @@ concurrency:
   cancel-in-progress: true
 
 on:
-  pull_request:
-    branches:
-      - main
-  push:
-    branches:
-      - main
-    tags:
-      - 'v*.*.*'
+  workflow_dispatch:
+  # TODO: disabled for now because it takes too long in CI
+  # pull_request:
+  #   branches:
+  #     - main
+  #   paths:
+  #     - 'Makefile'
+  #     - 'pyproject.toml'
+  #     - 'src/olmo_core/version.py'
+  #     - 'src/Dockerfile'
+  #     - '.github/workflows/docker.yml'
+  # push:
+  #   branches:
+  #     - main
+  #   tags:
+  #     - 'v*.*.*'
 
 jobs:
   beaker:
-    name: Beaker image (${{ matrix.version }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    name: Beaker images
+    runs-on: ubuntu-latest-m
+    timeout-minutes: 60
     env:
       BEAKER_TOKEN: ${{ secrets.BEAKER_TOKEN }}
-    strategy:
-      fail-fast: false
-      matrix:
-        version: [nightly, stable]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
       - name: Set env vars
         run: |
           echo "BEAKER_WORKSPACE=$(make get-beaker-workspace)" >> $GITHUB_ENV
 
-      - name: Build
+      - name: Build stable image
         run: |
-          make ${{ matrix.version }}-image
+          make stable-image
+
+      - name: Build nightly image
+        run: |
+          make nightly-image
 
       - uses: allenai/setup-beaker@v2
         if: env.BEAKER_TOKEN != ''
@@ -45,7 +55,14 @@ jobs:
           token: ${{ env.BEAKER_TOKEN }}
           workspace: ${{ env.BEAKER_WORKSPACE }}
 
-      - name: Push
+      - name: Push stable image
         if: env.BEAKER_TOKEN != '' && startsWith(github.ref, 'refs/tags/')
         run: |
-          make beaker-image-${{ matrix.version }}
+          rm -rf /opt/hostedtoolcache  # clear up some disk space
+          make beaker-image-stable
+
+      - name: Push nightly image
+        if: env.BEAKER_TOKEN != '' && startsWith(github.ref, 'refs/tags/')
+        run: |
+          rm -rf /opt/hostedtoolcache  # clear up some disk space
+          make beaker-image-nightly

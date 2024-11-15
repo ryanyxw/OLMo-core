@@ -13,11 +13,22 @@
 
 ## Installation
 
-First install [PyTorch](https://pytorch.org) according to the instructions specific to your operating system. Then you can install from PyPI with:
+First install [PyTorch](https://pytorch.org) according to the instructions specific to your operating system and hardware. Then you can install from PyPI with:
 
 ```bash
 pip install ai2-olmo-core
 ```
+
+There are a number of optional dependencies that must be installed to use certain functionality as well, including:
+- [flash-attn](https://github.com/Dao-AILab/flash-attention) for flash attention and certain other fused operations.
+- [torchao](https://github.com/pytorch/ao) for float8 training.
+- [megablocks](https://github.com/databricks/megablocks) for mixture-of-experts (MoE) models.
+
+## API stability
+
+Even though this library is under rapid development we are trying hard to adhere to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) with every release except for features that are explicitly marked as beta features. Those features will be tagged like this in the [API docs](https://olmo-core.readthedocs.io/en/latest/):
+
+![image](https://github.com/user-attachments/assets/c666686d-3ae6-4c88-8381-befd698d3fd0)
 
 ## Official training scripts
 
@@ -26,17 +37,19 @@ To see the exact usage for each script, run the script without any arguments.
 
 Throughput numbers from these scripts with various different configuration settings are reported below, measured on a cluster with NVIDIA H100 GPUs.
 
-| Model&nbsp;size | Context&nbsp;length | Precision | Throughput[^1] | Training&nbsp;script | Commandline&nbsp;overrides&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; |
-| :--------: | :------------: | :-------: | -----------: | :----------- | :-------- |
-| **1B**  | 4096 | BF16 | 44,000 TPS | `OLMo-1B.py` | |
-| | 256-8192[^2] | BF16 | 49,000 TPS | `OLMo-1B.py` | `--dataset.name=vsl` |
-| | 4096 | FP8 | 51,000 TPS | `OLMo-1B.py` | `--model.float8_config.enabled=true` |
-| **7B**  | 4096 | BF16 | 10,000 TPS | `OLMo-7B.py` | |
-| | | FP8 | 13,000 TPS | `OLMo-7B.py` | `--model.float8_config.enabled=true` |
-| **13B** | 4096 | BF16 | 4,600 TPS | `OLMo-13B.py` | |
+| Model&nbsp;size | Model&nbsp;arch | Context&nbsp;length | Precision | Throughput[^1] | Training&nbsp;script | Commandline&nbsp;overrides&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; |
+| :--------: | :--------: | :------------: | :-------: | -----------: | :----------- | :-------- |
+| **1B**  | OLMo-1124 | 4096 | BF16 | 55,000 TPS | `OLMo-1B.py` | |
+| | | 4096 | BF16/FP8[^2] | 65,000 TPS | `OLMo-1B.py` | `--model.float8_config.enabled=true` |
+| **7B**  | OLMo-1124 | 4096 | BF16 | 10,000 TPS | `OLMo-7B.py` | |
+| | | 4096 | BF16/FP8 | 13,000 TPS | `OLMo-7B.py` | `--model.float8_config.enabled=true` |
+| **8B**  | Llama | 4096 | BF16 | 9,500 TPS | `Llama-8B.py` | |
+| | | 4096 | BF16/FP8 | 12,500 TPS | `Llama-8B.py` | `--model.float8_config.enabled=true` |
+| **13B** | OLMo-1124 | 4096 | BF16 | 4,600 TPS | `OLMo-13B.py` | |
+| | | 4096 | BF16/FP8 | 5,500 TPS | `OLMo-13B.py` | `--model.float8_config.enabled=true` |
 
 [^1]: Throughput reported in tokens per second per device.
-[^2]: Denotes variable sequence length (VSL) with the Grow-P2 curriculum from [Dataset Decomposition: Faster LLM Training with Variable Sequence Length Curriculum](https://arxiv.org/abs/2405.13226).
+[^2]: In this setup most matrix multiplications are computed in `float8`, everything else is in `bfloat16`.
 
 ## Development
 

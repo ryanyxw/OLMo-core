@@ -20,12 +20,10 @@ from .data_loader import (
     NumpyFSLDataLoader,
     NumpyVSLDataLoader,
 )
-from .mixes import DataMix
+from .mixes import DataMix, DataMixBase
 from .numpy_dataset import (
     NumpyDatasetBase,
     NumpyDatasetConfig,
-    NumpyDatasetDType,
-    NumpyDatasetType,
     NumpyFSLDataset,
     NumpyPaddedFSLDataset,
     NumpyVSLDataset,
@@ -38,6 +36,7 @@ from .numpy_dataset import (
     VSLNaturalCurriculum,
 )
 from .tokenizer import TokenizerConfig, TokenizerName
+from .types import NumpyDatasetDType, NumpyDatasetType
 
 __all__ = [
     "NumpyDatasetBase",
@@ -56,6 +55,7 @@ __all__ = [
     "NumpyDatasetDType",
     "TokenizerConfig",
     "TokenizerName",
+    "DataMixBase",
     "DataMix",
     "DataCollator",
     "PaddingDirection",

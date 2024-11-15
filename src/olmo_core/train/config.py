@@ -44,8 +44,10 @@ class TrainerConfig(Config):
     metrics_collect_interval: int = 5
     callbacks: Dict[str, Callback] = field(default_factory=dict)
     fused_loss: bool = False
+    compile_loss: bool = False
     z_loss_multiplier: Optional[float] = None
     autocast_precision: Optional[DType] = None
+    async_bookkeeping: Optional[bool] = None
 
     def add_callback(self, name: str, callback: Callback):
         """
@@ -116,6 +118,7 @@ class TrainerConfig(Config):
 
         for cb_name, cb_config in callback_configs.items():
             cb = cb_config.build(trainer)
-            trainer.add_callback(cb_name, cb)
+            if cb is not None:
+                trainer.add_callback(cb_name, cb)
 
         return trainer

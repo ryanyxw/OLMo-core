@@ -7,6 +7,7 @@ import sys
 import time
 import uuid
 import warnings
+from contextlib import contextmanager
 from datetime import datetime
 from itertools import cycle, islice
 from queue import Queue
@@ -170,19 +171,18 @@ def has_flash_attn() -> bool:
 
 
 def set_env_var(name: str, value: str, override: bool = False, secret: bool = False):
-    global _LOGGING_CONFIGURED
     value_str = "****" if secret else value
     if name in os.environ:
         if override and os.environ[name] != value:
             msg = f"Overriding env var '{name}' to '{value_str}'"
-            if _LOGGING_CONFIGURED:
+            if logging_configured():
                 log.warning(msg)
             else:
                 print(msg)
             os.environ[name] = value
     else:
         msg = f"Setting env var '{name}' to '{value_str}'"
-        if _LOGGING_CONFIGURED:
+        if logging_configured():
             log.info(msg)
         else:
             print(msg)
@@ -313,6 +313,18 @@ def setup_logging(
     _LOGGING_CONFIGURED = True
 
 
+def logging_configured() -> bool:
+    """
+    Returns ``True`` if logging has been configured (like with :func:`setup_logging()`),
+    otherwise returns ``False``.
+    """
+    if _LOGGING_CONFIGURED:
+        return True
+    else:
+        # Otherwise check if the root logger has any handlers.
+        return len(logging.getLogger().handlers) > 0
+
+
 def excepthook(exctype, value, traceback):
     """
     Used to patch ``sys.excepthook`` in order to log exceptions. Use :func:`install_excepthook()`
@@ -362,6 +374,12 @@ def filter_warnings():
         action="ignore",
         category=UserWarning,
         message="Please use DTensor instead.*",
+    )
+    warnings.filterwarnings(
+        action="ignore",
+        category=UserWarning,
+        message="Synchronization debug mode is a prototype feature.*",
+        module="torch.cuda",
     )
     warnings.filterwarnings(
         action="ignore",
@@ -580,3 +598,42 @@ def format_float(value: float) -> str:
         return f"{value:.3f}"
     else:
         return f"{value:.4f}"
+
+
+def flatten_dict(d: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Flatten a nested dictionary with strings keys using dot notation.
+    """
+    out = {}
+
+    def add_sub_dict(prefix: str, sub_dict: Dict[str, Any]):
+        for k, v in sub_dict.items():
+            if isinstance(v, dict):
+                add_sub_dict(f"{prefix}.{k}", v)
+            else:
+                out[f"{prefix}.{k}"] = v
+
+    for k, v in d.items():
+        if isinstance(v, dict):
+            add_sub_dict(k, v)
+        else:
+            out[k] = v
+
+    return out
+
+
+@contextmanager
+def cuda_sync_debug_mode(debug_mode: Union[int, str]):
+    """
+    A context manager for temporarily setting the CUDA sync debug mode.
+    """
+    current_mode: Optional[int] = None
+
+    try:
+        if torch.cuda.is_available():
+            current_mode = torch.cuda.get_sync_debug_mode()
+            torch.cuda.set_sync_debug_mode(debug_mode)
+        yield
+    finally:
+        if current_mode is not None:
+            torch.cuda.set_sync_debug_mode(debug_mode)

@@ -8,12 +8,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import (
     Any,
+    Callable,
     Dict,
     Generator,
     Literal,
     Optional,
     Tuple,
+    Type,
     TypedDict,
+    TypeVar,
     Union,
     cast,
 )
@@ -45,7 +48,7 @@ from ..nn.functional.cross_entropy_loss import (
     fused_cross_entropy_loss,
 )
 from ..optim import SkipStepOptimizer
-from ..utils import move_to_device
+from ..utils import cuda_sync_debug_mode, move_to_device
 from .callbacks import (
     Callback,
     CheckpointerCallback,
@@ -64,6 +67,8 @@ TRAIN_PPL_METRIC = "train/PPL"
 TRAIN_Z_LOSS_METRIC = "train/Z loss"
 OPTIM_STEP_SKIPPED_METRIC = "optim/step skipped"
 SEQ_LEN_METRIC = "data/sequence length"
+
+T = TypeVar("T")
 
 
 class TrainerStateDict(TypedDict):
@@ -202,6 +207,11 @@ class Trainer:
     depend on the input sizes.
     """
 
+    compile_loss: bool = False
+    """
+    Compile the loss function.
+    """
+
     z_loss_multiplier: Optional[float] = None
     """
     Use Z-loss with this multiplier.
@@ -249,6 +259,12 @@ class Trainer:
     not affect the learning rate schedule.
     """
 
+    async_bookkeeping: Optional[bool] = None
+    """
+    Do collective bookkeeping operations like reducing metrics asynchronously.
+    This requires a separate CPU-only backend, and will default to ``True`` if one is available.
+    """
+
     _metrics: Dict[int, Dict[str, torch.Tensor]] = field(default_factory=OrderedDict)
     _metrics_reduce_type: Dict[str, Optional[ReduceType]] = field(default_factory=dict)
     _canceled: bool = False
@@ -259,6 +275,9 @@ class Trainer:
     _thread_pool: Optional[ThreadPoolExecutor] = None
     _bookkeeping_pg: Optional[dist.ProcessGroup] = None
     _checkpoint_loaded: bool = False
+    # NOTE: do not assign a default here or it will become a bound method due to the way
+    # dataclasses work.
+    _loss_fn = None
 
     def __post_init__(self):
         self.save_folder = normalize_path(self.save_folder)
@@ -283,15 +302,16 @@ class Trainer:
                 Path(self.save_folder).mkdir(exist_ok=True, parents=True)
 
         # Ensure we have necessary callbacks.
-        self.callbacks.setdefault(
-            "console_logger",
-            ConsoleLoggerCallback(
-                log_interval=1, metrics_log_interval=self.metrics_collect_interval
-            ),
-        )
-        self.callbacks.setdefault("checkpointer", CheckpointerCallback())
-        self.callbacks.setdefault("speed_monitor", SpeedMonitorCallback())
-        if is_distributed():
+        if not self.has_callback(ConsoleLoggerCallback):
+            self.callbacks.setdefault(
+                "console_logger",
+                ConsoleLoggerCallback(metrics_log_interval=self.metrics_collect_interval),
+            )
+        if not self.has_callback(CheckpointerCallback):
+            self.callbacks.setdefault("checkpointer", CheckpointerCallback())
+        if not self.has_callback(SpeedMonitorCallback):
+            self.callbacks.setdefault("speed_monitor", SpeedMonitorCallback())
+        if not self.has_callback(GarbageCollectorCallback):
             self.callbacks.setdefault("garbage_collector", GarbageCollectorCallback())
 
         # Set pointer to self in all callbacks.
@@ -306,13 +326,18 @@ class Trainer:
 
         # Maybe create separate process group for bookkeeping.
         if self._bookkeeping_pg is None and is_distributed():
-            if backend_supports_cpu():
-                log.info("Creating new process group for bookkeeping")
-                self._bookkeeping_pg = dist.new_group()
-            else:
-                log.warning(
-                    "No CPU backend configured, bookkeeping collectives will occur on the default "
-                    "backend and will be blocking. This may result in slower training throughput."
+            if self.async_bookkeeping is None:
+                self.async_bookkeeping = backend_supports_cpu()
+            if self.async_bookkeeping:
+                if not backend_supports_cpu():
+                    raise OLMoConfigurationError(
+                        "A CPU-only backend is required for async bookkeeping"
+                    )
+                log.info("Creating new process group for async bookkeeping")
+                self._bookkeeping_pg = dist.new_group(
+                    ranks=None
+                    if self.dp_process_group is None
+                    else dist.get_process_group_ranks(self.dp_process_group)
                 )
 
         # Check data loader configuration.
@@ -346,6 +371,14 @@ class Trainer:
         for callback in self.callbacks.values():
             callback.post_attach()
 
+        # Set loss function.
+        if self.fused_loss:
+            self._loss_fn = fused_cross_entropy_loss
+        else:
+            self._loss_fn = cross_entropy_loss
+        if self.compile_loss:
+            self._loss_fn = torch.compile(self._loss_fn)
+
     @property
     def global_batch_size(self) -> int:
         """
@@ -373,7 +406,7 @@ class Trainer:
             and self.global_step > 0
             and self.global_step % self.cancel_check_interval == 0
         ):
-            self.thread_pool.submit(self._check_if_canceled)
+            self.check_if_canceled()
 
         if self.is_canceled:
             return True
@@ -452,7 +485,7 @@ class Trainer:
         The device used for collective bookkeeping (non-training) operations that can potentially.
         use a different backend.
         """
-        if backend_supports_cpu():
+        if self.async_bookkeeping and backend_supports_cpu():
             return torch.device("cpu")
         else:
             return self.device
@@ -460,7 +493,8 @@ class Trainer:
     @property
     def bookkeeping_pg(self) -> Optional[dist.ProcessGroup]:
         """
-        The process group used for bookkeeping collectives.
+        The process group used for bookkeeping collectives. This should include the same ranks
+        as the :data:`dp_process_group`.
 
         Since bookkeeping collectives might be done in a separate thread, we need a separate process
         group to avoid potential race conditions.
@@ -498,7 +532,7 @@ class Trainer:
         Asynchronously check if the run is canceled. Use :data:`is_canceled` to see the result.
         This needs to be called by all ranks at the same point in the training loop.
         """
-        self.thread_pool.submit(self._check_if_canceled)
+        self._run_bookkeeping_op(self._check_if_canceled)
 
     def fit(self):
         """
@@ -530,6 +564,9 @@ class Trainer:
         og_sigterm_handler = signal.signal(signal.SIGTERM, self._handle_os_signal)
         og_sigint_handler = signal.signal(signal.SIGINT, self._handle_os_signal)
 
+        # Do a dry-run for compiling and catch OOMs.
+        self._dry_run_batch()
+
         try:
             while not self.training_complete:
                 self._fit_epoch()
@@ -545,6 +582,11 @@ class Trainer:
 
         for callback in self.callbacks.values():
             callback.post_train()
+
+        # Wait for any bookkeeping tasks to finish.
+        self.thread_pool.shutdown(wait=True, cancel_futures=False)
+        self._thread_pool = None
+        barrier()
 
         log.info("Training complete")
 
@@ -833,6 +875,106 @@ class Trainer:
         self._sort_callbacks()
         callback.post_attach()
 
+    def model_forward(self, micro_batch: Dict[str, Any]) -> torch.Tensor:
+        """
+        Run a forward pass on a micro-batch, returning the logits.
+        """
+        with self._model_forward_context():
+            # shape: (batch_size, seq_len, vocab_size)
+            logits = self.model(
+                input_ids=micro_batch["input_ids"],
+                #  attention_mask=micro_batch.get("attention_mask"),
+                #  attention_bias=micro_batch.get("attention_bias"),
+                doc_lens=micro_batch.get("doc_lens"),
+                max_doc_lens=micro_batch.get("max_doc_lens"),
+            )
+        return logits
+
+    def get_losses(
+        self,
+        micro_batch: Dict[str, Any],
+        logits: torch.Tensor,
+        loss_reduction: Literal["mean", "sum", "none"] = "mean",
+        compute_z_loss: Optional[bool] = None,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        """
+        Compute the cross-entropy loss and optionally the Z-loss from a micro-batch and the
+        corresponding logits returned from :meth:`model_forward()`.
+
+        :param micro_batch: The micro-batch to evaluate.
+        :param logits: The logits from the forward pass.
+        :param loss_reduction: The (local) reduction to apply to the loss(es).
+        :param compute_z_loss: Whether or not to compute and return the Z-loss.
+
+        :returns: The cross entropy and optional Z-loss, respectively.
+        """
+        if compute_z_loss is None:
+            compute_z_loss = self.z_loss_multiplier is not None
+
+        # shape: (batch_size, seq_len - 1, vocab_size)
+        logits_for_loss = logits[..., :-1, :].contiguous()
+        # shape: (batch_size * (seq_len - 1), vocab_size)
+        logits_for_loss = logits_for_loss.view(-1, logits_for_loss.size(-1))
+
+        # shape: (batch_size, seq_len - 1)
+        labels = micro_batch.get("labels", self._get_labels(micro_batch))
+        # shape: (batch_size * (seq_len - 1),)
+        labels = labels.view(-1)
+
+        ce_loss, z_loss = self._loss_fn(  # type: ignore
+            logits_for_loss,
+            labels,
+            ignore_index=self.data_loader.collator.label_ignore_index,
+            reduction=loss_reduction,
+            compute_z_loss=compute_z_loss,
+            z_loss_multiplier=self.z_loss_multiplier or 1e-4,
+        )
+
+        if loss_reduction == "none":
+            # Reshape (batch_size * (seq_len - 1),) -> (batch_size, seq_len - 1)
+            ce_loss = ce_loss.view(micro_batch["input_ids"].shape[0], -1)
+            if z_loss is not None:
+                z_loss = z_loss.view(micro_batch["input_ids"].shape[0], -1)
+
+        return ce_loss, z_loss
+
+    def eval_batch(
+        self,
+        batch: Dict[str, Any],
+        loss_reduction: Literal["mean", "sum", "none"] = "mean",
+        compute_z_loss: Optional[bool] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
+        """
+        Get the loss for an eval batch.
+
+        .. important::
+            You are responsible for ensuring the model is in ``.eval()`` mode before calling this.
+
+        :param batch: The batch to evaluate.
+        :param loss_reduction: The (local) reduction to apply to the loss(es).
+        :param compute_z_loss: Whether or not to compute and return the Z-loss.
+
+        :returns: The logits, cross-entropy loss, and Z-loss, respectively.
+        """
+        batch = move_to_device(batch, self.device)
+        for callback in self.callbacks.values():
+            callback.pre_eval_batch(batch)
+        with torch.no_grad():
+            logits = self.model_forward(batch)
+            ce_loss, z_loss = self.get_losses(
+                batch, logits, loss_reduction=loss_reduction, compute_z_loss=compute_z_loss
+            )
+        return logits, ce_loss, z_loss
+
+    def has_callback(self, cb_class: Type[Callback]) -> bool:
+        """
+        Check if the trainer already has a registered instance of the given callback class.
+        """
+        for cb in self.callbacks.values():
+            if isinstance(cb, cb_class):
+                return True
+        return False
+
     def _sort_callbacks(self):
         self.callbacks = OrderedDict(
             (
@@ -866,21 +1008,51 @@ class Trainer:
         log.warning(msg)
         self.cancel_run(msg)
 
+    def _run_bookkeeping_op(
+        self, op: Callable[..., T], *args, cb: Optional[Callable[[T], None]] = None, **kwargs
+    ):
+        if (
+            self.async_bookkeeping
+            and self.bookkeeping_device.type == "cpu"
+            and self.bookkeeping_pg is not None
+        ):
+            # Can safely run in the thread pool.
+            future = self.thread_pool.submit(op, *args, **kwargs)
+            if cb is not None:
+
+                def callback(fut: Future[T]):
+                    try:
+                        cb(fut.result())  # type: ignore[misc]
+                    except BaseException as e:
+                        log.exception(e)
+                        self._error = e
+
+                future.add_done_callback(callback)
+        else:
+            result = op(*args, **kwargs)
+            if cb is not None:
+                cb(result)
+
     def _check_if_canceled(self):
         if self._canceled:
             return
 
         canceling_rank = self._canceling_rank if self._canceling_rank is not None else -1
-        canceling_rank = all_reduce_value(
-            canceling_rank, self.bookkeeping_device, op=dist.ReduceOp.MAX, group=self.bookkeeping_pg
-        )
-        if canceling_rank >= 0:
-            cancel_reason = scatter_object(self._cancel_reason, src=canceling_rank)
-            assert cancel_reason is not None
-            self._canceled = True
-            self._canceling_rank = canceling_rank
-            self._cancel_reason = cancel_reason
-            log.warning(f"Run canceled from rank {canceling_rank}. Reason: {cancel_reason}")
+        # NOTE: this is a known host-device sync (potentially) so we don't need the warning
+        with cuda_sync_debug_mode(0):
+            canceling_rank = all_reduce_value(
+                canceling_rank,
+                self.bookkeeping_device,
+                op=dist.ReduceOp.MAX,
+                group=self.bookkeeping_pg,
+            )
+            if canceling_rank >= 0:
+                cancel_reason = scatter_object(self._cancel_reason, src=canceling_rank)
+                assert cancel_reason is not None
+                self._canceled = True
+                self._canceling_rank = canceling_rank
+                self._cancel_reason = cancel_reason
+                log.warning(f"Run canceled from rank {canceling_rank}. Reason: {cancel_reason}")
 
     def _log_metrics(self):
         if not self._metrics:
@@ -893,37 +1065,14 @@ class Trainer:
         # so CUDA training can continue.
         metrics_to_reduce = move_metrics(self._metrics, self.bookkeeping_device)
         self._metrics.clear()
-
-        if self.bookkeeping_device.type == "cpu" and self.bookkeeping_pg is not None:
-            # If we have a separate CPU backend and process group we can safely reduce
-            # metrics on CPU in a thread.
-            future = self.thread_pool.submit(
-                reduce_metrics,
-                metrics_to_reduce,
-                self._metrics_reduce_type,
-                self.bookkeeping_device,
-                process_group=self.bookkeeping_pg,
-            )
-
-            def callback(fut):
-                try:
-                    self._check_and_pass_on_metrics(fut.result())
-                except BaseException as e:
-                    log.exception(e)
-                    self._error = e
-
-            future.add_done_callback(callback)
-        else:
-            # Otherwise we have to reduce them now in the main thread.
-            # NOTE: if we're training on GPU and didn't have a host device sync above, this will
-            # trigger a host-device sync as we transfer the metrics back to CPU post-reducing.
-            metrics = reduce_metrics(
-                metrics_to_reduce,
-                self._metrics_reduce_type,
-                self.bookkeeping_device,
-                process_group=self.bookkeeping_pg,
-            )
-            self._check_and_pass_on_metrics(metrics)
+        self._run_bookkeeping_op(
+            reduce_metrics,
+            metrics_to_reduce,
+            self._metrics_reduce_type,
+            self.bookkeeping_device,
+            process_group=self.bookkeeping_pg,
+            cb=self._check_and_pass_on_metrics,
+        )
 
     def _check_and_pass_on_metrics(self, metrics: Dict[int, Dict[str, float]]):
         for step in sorted(metrics.keys()):
@@ -952,68 +1101,12 @@ class Trainer:
         loss_reduction: Literal["mean", "sum", "none"] = "mean",
         compute_z_loss: bool = False,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], torch.Tensor]:
-        with self._model_forward_context():
-            # shape: (batch_size, seq_len, vocab_size)
-            logits = self.model(
-                input_ids=batch["input_ids"],
-                #  attention_mask=batch.get("attention_mask"),
-                #  attention_bias=batch.get("attention_bias"),
-                doc_lens=batch.get("doc_lens"),
-                max_doc_lens=batch.get("max_doc_lens"),
-            )
-
-        # shape: (batch_size, seq_len - 1, vocab_size)
-        logits_for_loss = logits[..., :-1, :].contiguous()
-        # shape: (batch_size * (seq_len - 1), vocab_size)
-        logits_for_loss = logits_for_loss.view(-1, logits_for_loss.size(-1))
-        # shape: (batch_size, seq_len - 1)
-        labels = batch.get("labels", self._get_labels(batch))
-        # shape: (batch_size * (seq_len - 1),)
-        labels = labels.view(-1)
-
-        loss_fn = cross_entropy_loss if not self.fused_loss else fused_cross_entropy_loss
-        ce_loss, z_loss = loss_fn(
-            logits_for_loss,
-            labels,
-            ignore_index=self.data_loader.collator.label_ignore_index,
-            reduction=loss_reduction,
-            compute_z_loss=compute_z_loss,
-            z_loss_multiplier=self.z_loss_multiplier or 1e-4,
+        # NOTE: keep this method for backwards compatibility.
+        logits = self.model_forward(batch)
+        ce_loss, z_loss = self.get_losses(
+            batch, logits, loss_reduction=loss_reduction, compute_z_loss=compute_z_loss
         )
-
-        if loss_reduction == "none":
-            # Reshape (batch_size * (seq_len - 1),) -> (batch_size, seq_len - 1)
-            ce_loss = ce_loss.view(batch["input_ids"].shape[0], -1)
-            if z_loss is not None:
-                z_loss = z_loss.view(batch["input_ids"].shape[0], -1)
-
         return ce_loss, z_loss, logits
-
-    def _get_microbatch_loss(
-        self, micro_batch: Dict[str, Any], batch_num_tokens_for_loss: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
-        # NOTE: we use the "sum" loss reduction and then divide by 'batch_num_tokens_for_loss'
-        # (the total number of tokens used in the loss across the whole batch, not just the micro batch)
-        # to avoid biasing the loss in the case where micro-batches might not be the same size.
-        ce_loss, z_loss, logits = self._model_forward(
-            micro_batch, compute_z_loss=self.z_loss_multiplier is not None, loss_reduction="sum"
-        )
-        ce_loss = ce_loss / batch_num_tokens_for_loss
-
-        # In case this helps with memory utilization.
-        del micro_batch
-
-        # Get loss to optimize for.
-        if self.z_loss_multiplier is not None:
-            assert z_loss is not None
-            z_loss = z_loss / batch_num_tokens_for_loss
-            loss = ce_loss + z_loss
-        else:
-            loss = ce_loss
-
-        del logits
-
-        return loss, ce_loss, z_loss
 
     @contextlib.contextmanager
     def _train_microbatch_context(
@@ -1025,9 +1118,9 @@ class Trainer:
                 stack.enter_context(self.model.no_sync())
             yield
 
-    def _train_batch(self, batch: Dict[str, Any]):
+    def _train_batch(self, batch: Dict[str, Any], dry_run: bool = False):
         # Record how many instances are going to be skipped (masked out).
-        if (instance_mask := batch.get("instance_mask")) is not None:
+        if (instance_mask := batch.get("instance_mask")) is not None and not dry_run:
             self.record_metric("train/masked instances", (~instance_mask).sum(), ReduceType.sum)
 
         # Zero-gradients.
@@ -1051,21 +1144,33 @@ class Trainer:
         micro_batches = split_batch(batch, self.rank_microbatch_size // seq_len)
         num_micro_batches = len(micro_batches)
 
-        # In case this helps with memory utilization.
-        del batch
-
-        ce_batch_loss = torch.tensor(0.0, device=self.device)
+        ce_batch_loss = move_to_device(torch.tensor(0.0), self.device)
         z_batch_loss = (
-            None if self.z_loss_multiplier is None else torch.tensor(0.0, device=self.device)
+            None
+            if self.z_loss_multiplier is None
+            else move_to_device(torch.tensor(0.0), self.device)
         )
 
         # Train one micro-batch at a time.
         for micro_batch_idx, micro_batch in enumerate(micro_batches):
             with self._train_microbatch_context(micro_batch_idx, num_micro_batches):
                 # Run forward pass.
-                loss, ce_loss, z_loss = self._get_microbatch_loss(
-                    micro_batch, batch_num_tokens_for_loss
-                )
+                logits = self.model_forward(micro_batch)
+
+                # NOTE: we use the "sum" loss reduction and then divide by 'batch_num_tokens_for_loss'
+                # (the total number of tokens used in the loss across the whole batch, not just the micro batch)
+                # to avoid biasing the loss in the case where micro-batches might not be the same size.
+                ce_loss, z_loss = self.get_losses(micro_batch, logits, loss_reduction="sum")
+                ce_loss.div_(batch_num_tokens_for_loss)
+                if z_loss is not None:
+                    z_loss.div_(batch_num_tokens_for_loss)
+
+                # Get loss to optimize for.
+                loss: torch.Tensor
+                if z_loss is not None:
+                    loss = ce_loss + z_loss
+                else:
+                    loss = ce_loss
 
                 # Update overall CE batch loss.
                 ce_batch_loss += get_local_tensor(ce_loss.detach())
@@ -1075,8 +1180,20 @@ class Trainer:
                     assert z_batch_loss is not None
                     z_batch_loss += get_local_tensor(z_loss.detach())
 
+                # Run through callbacks.
+                for callback in self.callbacks.values():
+                    callback.pre_backward(batch=batch, micro_batch=micro_batch, loss=loss)
+
                 # Run backward pass.
                 loss.backward()
+
+        # In case this helps with memory utilization.
+        del batch
+
+        if dry_run:
+            # Zero-gradients again.
+            self.optim.zero_grad(set_to_none=True)
+            return
 
         self.record_metric(TRAIN_CE_LOSS_METRIC, ce_batch_loss, ReduceType.mean)
         if z_batch_loss is not None:
@@ -1094,6 +1211,10 @@ class Trainer:
         if isinstance(self.optim, SkipStepOptimizer):
             self.record_metric(OPTIM_STEP_SKIPPED_METRIC, self.optim.step_skipped)
 
+        # Run through callbacks.
+        for callback in self.callbacks.values():
+            callback.post_train_batch()
+
     def _iter_batches(self) -> Generator[Dict[str, Any], None, None]:
         data_iterator = iter(self.data_loader)
 
@@ -1107,6 +1228,32 @@ class Trainer:
             except StopIteration:
                 break
 
+    def _validate_batch(self, batch: Dict[str, Any]) -> int:
+        """
+        Validate the data in a batch and return the global total number of tokens in the batch.
+        """
+        # NOTE: To track the global number of tokens seen per batch we make the
+        # assumption that all ranks see the same number batch size in tokens per step,
+        # which should always be the case for training efficiency at least.
+        # Alternatively we'd have to use a distributed collective which isn't worth it.
+        if batch["input_ids"].numel() != self.rank_batch_size:
+            raise RuntimeError(
+                f"Expected batch size of {self.rank_batch_size:,d} tokens on rank {get_rank()}, "
+                f"got input IDs with shape {tuple(batch['input_ids'].shape)} = {batch['input_ids'].numel():,d} tokens"
+            )
+        return self.global_batch_size
+
+    def _dry_run_batch(self):
+        try:
+            batch = self.data_loader.get_mock_batch()
+        except NotImplementedError:
+            return  # for backwards compatibility
+
+        log.info("Starting forward/backward dry-run batch...")
+        self._validate_batch(batch)
+        self._train_batch(batch, dry_run=True)
+        log.info("Dry-run complete")
+
     def _fit_epoch(self):
         self.data_loader.reshuffle(self.epoch)
 
@@ -1118,17 +1265,8 @@ class Trainer:
         first_batch = True
         for batch in self._iter_batches():
             # Bookkeeping.
-            # NOTE: To track the global number of tokens seen per batch we make the
-            # assumption that all ranks see the same number batch size in tokens per step,
-            # which should always be the case for training efficiency at least.
-            # Alternatively we'd have to use a distributed collective which isn't worth it.
-            if batch["input_ids"].numel() != self.rank_batch_size:
-                raise RuntimeError(
-                    f"Expected batch size of {self.rank_batch_size:,d} tokens on rank {get_rank()}, "
-                    f"got input IDs with shape {tuple(batch['input_ids'].shape)} = {batch['input_ids'].numel():,d} tokens"
-                )
             self.global_step += 1
-            self.global_train_tokens_seen += self.global_batch_size
+            self.global_train_tokens_seen += self._validate_batch(batch)
 
             self.record_metric(SEQ_LEN_METRIC, float(batch["input_ids"].shape[1]))
 
@@ -1138,13 +1276,11 @@ class Trainer:
             self._train_batch(batch)
 
             for callback in self.callbacks.values():
-                callback.post_train_batch()
-
-            for callback in self.callbacks.values():
                 callback.post_step()
 
             if first_batch or self.global_step % self.metrics_collect_interval == 0:
                 self._log_metrics()
+                torch.cuda.set_sync_debug_mode("warn")
 
             first_batch = False
 

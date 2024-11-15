@@ -17,9 +17,9 @@ from olmo_core.data import (
     NumpyDatasetType,
     TokenizerConfig,
 )
-from olmo_core.distributed.parallel import DataParallelConfig, DataParallelType
+from olmo_core.distributed.parallel import DataParallelType
 from olmo_core.distributed.utils import init_hybrid_shard_mesh
-from olmo_core.nn.transformer import TransformerConfig
+from olmo_core.nn.transformer import TransformerConfig, TransformerDataParallelConfig
 from olmo_core.optim import AdamWConfig, CosWithWarmup, OptimGroupOverride
 from olmo_core.train import (
     Duration,
@@ -29,7 +29,9 @@ from olmo_core.train import (
 )
 from olmo_core.train.callbacks import (
     CheckpointerCallback,
+    CometCallback,
     ConfigSaverCallback,
+    DownstreamEvaluatorCallbackConfig,
     GPUMemoryMonitorCallback,
     GradClipperCallback,
     LMEvaluatorCallbackConfig,
@@ -57,7 +59,7 @@ def build_config(run_name: str, overrides: List[str]) -> ExperimentConfig:
     model_config = TransformerConfig.llama2_271M(
         vocab_size=tokenizer_config.padded_vocab_size(),  # a little bigger than actual vocab size to make it a multiple of 128
         compile=True,
-        dp_config=DataParallelConfig(
+        dp_config=TransformerDataParallelConfig(
             name=DataParallelType.fsdp, param_dtype=DType.bfloat16, reduce_dtype=DType.float32
         ),
     )
@@ -114,6 +116,14 @@ def build_config(run_name: str, overrides: List[str]) -> ExperimentConfig:
             ),
         )
         .with_callback(
+            "comet",
+            CometCallback(
+                name=run_name,
+                cancel_check_interval=10,
+                enabled=False,  # change to true to enable
+            ),
+        )
+        .with_callback(
             "wandb",
             WandBCallback(
                 name=run_name,
@@ -124,7 +134,7 @@ def build_config(run_name: str, overrides: List[str]) -> ExperimentConfig:
         .with_callback("config_saver", ConfigSaverCallback())
         .with_callback("profiler", ProfilerCallback(enabled=False))
         .with_callback(
-            "evaluator",
+            "lm_evaluator",
             LMEvaluatorCallbackConfig(
                 eval_dataset=NumpyDatasetConfig(
                     paths=["/net/nfs/allennlp/llm-data/c4/en/c4-validation.00000-00008.npy"],
@@ -136,6 +146,14 @@ def build_config(run_name: str, overrides: List[str]) -> ExperimentConfig:
                 ),
                 eval_interval=250,
                 eval_duration=Duration.steps(10),
+            ),
+        )
+        .with_callback(
+            "downstream_evaluator",
+            DownstreamEvaluatorCallbackConfig(
+                tasks=["hellaswag"],
+                tokenizer=tokenizer_config,
+                eval_interval=250,
             ),
         )
     )
@@ -168,6 +186,7 @@ def main(run_name: str, overrides: List[str]):
 
     # Save config to W&B and each checkpoint dir.
     config_dict = config.as_config_dict()
+    cast(CometCallback, trainer.callbacks["comet"]).config = config_dict
     cast(WandBCallback, trainer.callbacks["wandb"]).config = config_dict
     cast(ConfigSaverCallback, trainer.callbacks["config_saver"]).config = config_dict
 

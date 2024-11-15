@@ -5,12 +5,12 @@ Train a 7B OLMo model. Run this script without any arguments to see usage info.
 import logging
 
 from olmo_core.config import DType
-from olmo_core.distributed.parallel import DataParallelConfig, DataParallelType
+from olmo_core.distributed.parallel import DataParallelType
 from olmo_core.internal.experiment import CommonComponents, main
-from olmo_core.nn.transformer import TransformerConfig
+from olmo_core.nn.transformer import TransformerConfig, TransformerDataParallelConfig
 from olmo_core.optim import AdamWConfig, OptimGroupOverride
 from olmo_core.train import TrainerConfig
-from olmo_core.train.callbacks import CheckpointerCallback, WandBCallback
+from olmo_core.train.callbacks import CheckpointerCallback, CometCallback, WandBCallback
 
 log = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ def build_model_config(common: CommonComponents) -> TransformerConfig:
     return TransformerConfig.olmo_7B(
         vocab_size=common.tokenizer.padded_vocab_size(),
         compile=True,
-        dp_config=DataParallelConfig(
+        dp_config=TransformerDataParallelConfig(
             name=DataParallelType.fsdp, param_dtype=DType.bfloat16, reduce_dtype=DType.float32
         ),
     )
@@ -47,7 +47,7 @@ def build_trainer_config(common: CommonComponents) -> TrainerConfig:
             metrics_collect_interval=10,
             cancel_check_interval=1,
             z_loss_multiplier=1e-5,
-            fused_loss=True,
+            compile_loss=True,
         )
         .with_callback(
             "checkpointer",
@@ -58,12 +58,22 @@ def build_trainer_config(common: CommonComponents) -> TrainerConfig:
             ),
         )
         .with_callback(
+            "comet",
+            CometCallback(
+                name=common.run_name,
+                workspace="ai2",
+                project="OLMo-core-7B",
+                enabled=True,
+                cancel_check_interval=10,
+            ),
+        )
+        .with_callback(
             "wandb",
             WandBCallback(
                 name=common.run_name,
                 entity="ai2-llm",
                 project="OLMo-core-7B",
-                enabled=True,
+                enabled=False,
                 cancel_check_interval=10,
             ),
         )

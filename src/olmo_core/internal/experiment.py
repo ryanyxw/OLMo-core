@@ -1,9 +1,10 @@
 import logging
 import sys
 from dataclasses import dataclass
-from typing import Callable, Dict, List, cast
+from typing import Callable, Dict, List, Optional, cast
 
 from beaker import Beaker
+from torch.distributed.device_mesh import DeviceMesh
 
 from olmo_core.config import Config, StrEnum
 from olmo_core.data import (
@@ -33,8 +34,10 @@ from olmo_core.train import (
 )
 from olmo_core.train.callbacks import (
     Callback,
+    CometCallback,
     ConfigSaverCallback,
     Float8HandlerCallback,
+    GarbageCollectorCallback,
     GPUMemoryMonitorCallback,
     GradClipperCallback,
     LMEvaluatorCallbackConfig,
@@ -63,6 +66,22 @@ class CommonComponents(Config):
     callbacks: Dict[str, Callback]
 
 
+class DPMeshType(StrEnum):
+    full = "full"
+    hybrid = "hybrid"
+
+
+@dataclass
+class DPMeshConfig(Config):
+    name: DPMeshType = DPMeshType.hybrid
+
+    def build(self) -> Optional[DeviceMesh]:
+        if get_num_nodes() == 1 or self.name == DPMeshType.full:
+            return None
+        else:
+            return init_hybrid_shard_mesh()
+
+
 @dataclass
 class ExperimentConfig(Config):
     run_name: str
@@ -72,6 +91,7 @@ class ExperimentConfig(Config):
     dataset: NumpyDatasetConfig
     data_loader: NumpyDataLoaderConfig
     trainer: TrainerConfig
+    dp_mesh: DPMeshConfig
     init_seed: int = 12536
 
 
@@ -122,6 +142,8 @@ def build_common_components(
     if "jupiter" in cluster:
         root_dir = "/weka/oe-training-default/ai2-llm"
         weka_buckets.append(BeakerWekaBucket("oe-training-default", "/weka/oe-training-default"))
+    elif "augusta" in cluster:
+        root_dir = "gs://ai2-llm"
 
     beaker_user = (Beaker.from_env().account.whoami().name).upper()
     cmd_to_launch = SubCmd.train
@@ -144,6 +166,7 @@ def build_common_components(
         env_secrets=[
             BeakerEnvSecret(name="BEAKER_TOKEN", secret=f"{beaker_user}_BEAKER_TOKEN"),
             BeakerEnvSecret(name="WANDB_API_KEY", secret=f"{beaker_user}_WANDB_API_KEY"),
+            BeakerEnvSecret(name="COMET_API_KEY", secret=f"{beaker_user}_COMET_API_KEY"),
             BeakerEnvSecret(name="AWS_CONFIG", secret=f"{beaker_user}_AWS_CONFIG"),
             BeakerEnvSecret(name="AWS_CREDENTIALS", secret=f"{beaker_user}_AWS_CREDENTIALS"),
             BeakerEnvSecret(name="R2_ENDPOINT_URL", secret="R2_ENDPOINT_URL"),
@@ -178,9 +201,11 @@ def build_common_components(
         vsl_curriculum=VSLCurriculumConfig(
             name=VSLCurriculumType.grow_p2, num_cycles=8, balanced=False
         ),
-        work_dir=None
-        if is_url(root_dir)
-        else f"{root_dir}/checkpoints/{beaker_user.lower()}/dataset-cache",
+        work_dir=(
+            "./dataset-cache"
+            if is_url(root_dir)
+            else f"{root_dir}/checkpoints/{beaker_user.lower()}/dataset-cache"
+        ),
     )
 
     data_loader_config = NumpyDataLoaderConfig(
@@ -193,6 +218,7 @@ def build_common_components(
         "grad_clipper": GradClipperCallback(max_grad_norm=1.0),
         "config_saver": ConfigSaverCallback(),
         "profiler": ProfilerCallback(enabled=False),
+        "garbage_collector": GarbageCollectorCallback(),
         "lm_evaluator": LMEvaluatorCallbackConfig(
             eval_dataset=NumpyDatasetConfig.from_data_mix(
                 DataMix.v3_small_ppl_validation,
@@ -200,9 +226,11 @@ def build_common_components(
                 mix_base_dir=root_dir,
                 sequence_length=dataset_config.effective_sequence_length,
                 tokenizer=tokenizer_config,
-                work_dir=None
-                if is_url(root_dir)
-                else f"{root_dir}/checkpoints/{beaker_user.lower()}/dataset-cache",
+                work_dir=(
+                    "./dataset-cache"
+                    if is_url(root_dir)
+                    else f"{root_dir}/checkpoints/{beaker_user.lower()}/dataset-cache"
+                ),
             ),
             eval_interval=1000,
         ),
@@ -230,6 +258,7 @@ def build_config(
     model_config_builder: Callable[[CommonComponents], TransformerConfig],
     optim_config_builder: Callable[[CommonComponents], AdamWConfig],
     trainer_config_builder: Callable[[CommonComponents], TrainerConfig],
+    finalize_config: Optional[Callable[[ExperimentConfig], None]] = None,
 ) -> ExperimentConfig:
     common = build_common_components(
         script, cmd, run_name, cluster, overrides, global_batch_size=global_batch_size
@@ -251,7 +280,13 @@ def build_config(
         dataset=common.dataset,
         data_loader=common.data_loader,
         trainer=trainer,
-    ).merge(overrides)
+        dp_mesh=DPMeshConfig(),
+    )
+
+    if finalize_config is not None:
+        finalize_config(config)
+
+    config = config.merge(overrides)
 
     if config.model.float8_config is not None and config.model.float8_config.enabled:
         config.trainer.add_callback(
@@ -288,7 +323,7 @@ def train(config: ExperimentConfig):
         init_device="meta",
         device=get_default_device(),
         max_seq_len=config.dataset.sequence_length,
-        dp_mesh=None if get_num_nodes() == 1 else init_hybrid_shard_mesh(),
+        dp_mesh=config.dp_mesh.build(),
     )
     optim = config.optim.build(model)
     dataset = config.dataset.build()
@@ -297,6 +332,7 @@ def train(config: ExperimentConfig):
 
     # Record the config to W&B and each checkpoint dir.
     config_dict = config.as_config_dict()
+    cast(CometCallback, trainer.callbacks["comet"]).config = config_dict
     cast(WandBCallback, trainer.callbacks["wandb"]).config = config_dict
     cast(ConfigSaverCallback, trainer.callbacks["config_saver"]).config = config_dict
 
@@ -310,6 +346,7 @@ def main(
     model_config_builder: Callable[[CommonComponents], TransformerConfig],
     optim_config_builder: Callable[[CommonComponents], AdamWConfig],
     trainer_config_builder: Callable[[CommonComponents], TrainerConfig],
+    finalize_config: Optional[Callable[[ExperimentConfig], None]] = None,
 ):
     usage = f"""
 [yellow]Usage:[/] [i blue]python[/] [i cyan]{sys.argv[0]}[/] [i b magenta]{'|'.join(SubCmd)}[/] [i b]RUN_NAME CLUSTER[/] [i][OVERRIDES...][/]
@@ -347,6 +384,7 @@ $ [i]python {sys.argv[0]} {SubCmd.launch} run01 ai2/pluto-cirrascale --launch.nu
         model_config_builder=model_config_builder,
         optim_config_builder=optim_config_builder,
         trainer_config_builder=trainer_config_builder,
+        finalize_config=finalize_config,
     )
 
     cmd.run(config)

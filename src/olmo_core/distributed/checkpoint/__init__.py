@@ -35,6 +35,7 @@ import torch.distributed as dist
 import torch.distributed.checkpoint as dist_cp
 import torch.distributed.checkpoint.state_dict as dist_cp_sd
 import torch.nn as nn
+from torch.distributed.checkpoint.metadata import Metadata
 
 from olmo_core.aliases import PathOrStr
 from olmo_core.io import clear_directory, dir_is_empty, is_url, normalize_path
@@ -44,13 +45,43 @@ from ..utils import barrier, get_fs_local_rank, is_distributed
 from .filesystem import RemoteFileSystemReader, RemoteFileSystemWriter
 
 __all__ = [
+    "save_state_dict",
     "save_model_and_optim_state",
     "async_save_model_and_optim_state",
     "load_model_and_optim_state",
     "unshard_checkpoint",
+    "get_checkpoint_metadata",
 ]
 
 log = logging.getLogger(__name__)
+
+
+@torch.no_grad()
+def save_state_dict(
+    dir: PathOrStr,
+    state_dict: Dict[str, Any],
+    process_group: Optional[dist.ProcessGroup] = None,
+    save_overwrite: bool = False,
+):
+    """
+    Save an arbitrary state dictionary to a distributed format that can loaded again with
+    a different distributed topology.
+
+    .. important::
+        Please use :func:`save_model_and_optim_state` to save model/optimizer state dicts instead
+        unless you know what you're doing.
+
+    :param dir: Path/URL to save to.
+    :param state_dict: The state dict to save.
+    :param process_group: The process group to use for distributed collectives.
+    :param save_overwrite: Overwrite existing files.
+    """
+    dir = _prepare_env_for_save(dir, process_group=process_group, save_overwrite=save_overwrite)
+    dist_cp.state_dict_saver.save(
+        state_dict,
+        storage_writer=RemoteFileSystemWriter(dir),
+        process_group=process_group,
+    )
 
 
 @torch.no_grad()
@@ -279,6 +310,17 @@ def unshard_checkpoint(
         gc_cuda()
 
     return model_path, optim_path
+
+
+def get_checkpoint_metadata(dir: PathOrStr) -> Metadata:
+    """
+    Load the metadata from a checkpoint.
+
+    :param dir: The path/URL to the checkpoint.
+    """
+    dir = normalize_path(dir)
+    storage_reader = RemoteFileSystemReader(dir)
+    return storage_reader.read_metadata()
 
 
 def _prepare_env_for_save(

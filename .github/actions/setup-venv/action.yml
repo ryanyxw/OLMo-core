@@ -11,12 +11,12 @@ inputs:
   torch-version:
     description: The PyTorch version to install
     required: false
-    default: '==2.4.1'
+    default: '==2.5.0'
 runs:
   using: composite
   steps:
     - name: Setup Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ inputs.python-version }}
 
@@ -30,7 +30,7 @@ runs:
         # Get the exact Python version to use in the cache key.
         echo "PYTHON_VERSION=$(python --version)" >> $GITHUB_ENV
 
-    - uses: actions/cache@v2
+    - uses: actions/cache@v4
       id: virtualenv-cache
       with:
         path: .venv
@@ -44,7 +44,7 @@ runs:
         # Set up virtual environment without cache hit.
         test -d .venv || virtualenv -p $(which python) --copies --reset-app-data .venv
         . .venv/bin/activate
-        pip install 'torch${{ inputs.torch-version }}' --extra-index-url https://download.pytorch.org/whl/cpu
+        pip install 'torch${{ inputs.torch-version }}' --index-url https://download.pytorch.org/whl/cpu
         pip install -e .[all]
 
     - if: steps.virtualenv-cache.outputs.cache-hit == 'true'

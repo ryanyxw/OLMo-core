@@ -52,7 +52,7 @@ def main(input_path: PathOrStr, output_path: PathOrStr):
         ]
 
         # Split up fused feed-forward projection.
-        w1, w3 = old_sd[f"transformer.blocks.{block_idx}.ff_proj.weight"].chunk(2, dim=-1)
+        w3, w1 = old_sd[f"transformer.blocks.{block_idx}.ff_proj.weight"].chunk(2, dim=-1)
         new_sd[f"blocks.{block_idx}.feed_forward.w1.weight"] = w1
         new_sd[f"blocks.{block_idx}.feed_forward.w3.weight"] = w3
 

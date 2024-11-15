@@ -8,6 +8,7 @@ from olmo_core.distributed.parallel import DataParallelType
 from olmo_core.internal.experiment import CommonComponents, main
 from olmo_core.nn.moe import MoEActivationFn, MoEConfig, MoEMLPImplementation, MoEType
 from olmo_core.nn.transformer import (
+    TransformerActivationCheckpointingConfig,
     TransformerBlockType,
     TransformerConfig,
     TransformerDataParallelConfig,
@@ -31,6 +32,7 @@ def build_model_config(common: CommonComponents) -> TransformerConfig:
         compile=True,
         fused_ops=False,
         block_name=TransformerBlockType.moe_reordered_norm,
+        ac_config=TransformerActivationCheckpointingConfig(),
         dp_config=TransformerDataParallelConfig(
             name=DataParallelType.fsdp,
             param_dtype=DType.bfloat16,

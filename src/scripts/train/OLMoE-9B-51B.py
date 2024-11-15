@@ -46,7 +46,7 @@ def build_model_config(common: CommonComponents) -> TransformerConfig:
         name=MoEType.dropless,
         hidden_size=int(0.25 * model_config.d_model),
         activation_fn=MoEActivationFn.swiglu,
-        mlp_implementation=MoEMLPImplementation.grouped,
+        mlp_implementation=MoEMLPImplementation.sparse,
         num_experts=128,
         top_k=16,
         num_layers=model_config.n_layers,

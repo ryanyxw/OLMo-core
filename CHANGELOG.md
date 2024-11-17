@@ -7,14 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Fixed
+
+- (Optimization) Mark model input sizes as dynamic for `torch.compile()` to avoid recompile during evals or variable-sequence / batch size training. This doesn't seem to hurt throughput.
+
+## [v1.6.3](https://github.com/allenai/OLMo-core/releases/tag/v1.6.3) - 2024-11-15
+
 ### Added
 
 - Added `olmo_core.distributed.checkpoint.get_checkpoint_metadata()` function.
+- (BETA) Added flag to compile the optimizer step. So far only tested with AdamW. May not work with other optimizers.
 
 ### Fixed
 
 - Old ephemeral checkpoints won't be removed until after the latest ephemeral checkpoint is saved successfully.
 - Made GCS uploads more robust.
+- Fixed single-node training on Google Augusta cluster.
+- `numpy.random.dirichlet()` does not always sum to 1.0, so allow for a small tolerance in validating domain weights.
 
 ## [v1.6.2](https://github.com/allenai/OLMo-core/releases/tag/v1.6.2) - 2024-11-08
 

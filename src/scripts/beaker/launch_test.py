@@ -28,6 +28,15 @@ def build_config(command: List[str], overrides: List[str]) -> BeakerLaunchConfig
         num_gpus=2,
         shared_filesystem=True,
         #  host_networking=False,
+        setup_steps=[
+            'git clone "$REPO_URL" .',
+            'git checkout "$GIT_REF"',
+            "git submodule update --init --recursive",
+            "conda shell.bash activate base",
+            "pip install matplotlib",
+            "pip install -e '.[all]'",
+            "pip freeze",
+        ],
     ).merge(overrides)
 
 

@@ -246,7 +246,7 @@ def matmul_kernel(
     tl.store(c_ptrs, c, mask=c_mask)
 
 
-def matmul(a, b):
+def matmul(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     # Check constraints.
     assert a.shape[1] == b.shape[0], "Incompatible dimensions"
     assert a.is_contiguous(), "Matrix A must be contiguous"
@@ -284,8 +284,8 @@ if __name__ == "__main__":
     torch.manual_seed(0)
 
     # Unit Test.
-    a = torch.randn((512, 512), device=device, dtype=torch.float16)
-    b = torch.randn((512, 512), device=device, dtype=torch.float16)
+    a = torch.randn((512, 512), device=device, dtype=torch.bfloat16)
+    b = torch.randn((512, 512), device=device, dtype=torch.bfloat16)
     triton_output = matmul(a, b)
     torch_output = torch.matmul(a, b)
     # Bigger tolerance for AMD MI200 devices.
@@ -299,14 +299,14 @@ if __name__ == "__main__":
 
     if is_cuda():
         torch.manual_seed(0)
-        a = torch.randn((512, 512), device=device, dtype=torch.float16)
-        b = torch.randn((512, 512), device=device, dtype=torch.float16)
+        a = torch.randn((512, 512), device=device, dtype=torch.bfloat16)
+        b = torch.randn((512, 512), device=device, dtype=torch.bfloat16)
         a = a.to(torch.float8_e5m2)
         # pre-transpose b for efficiency.
         b = b.T
         b = b.to(torch.float8_e5m2)
         triton_output = matmul(a, b)
-        torch_output = torch.matmul(a.to(torch.float16), b.to(torch.float16))
+        torch_output = torch.matmul(a.to(torch.bfloat16), b.to(torch.bfloat16))
         if torch.allclose(triton_output, torch_output, atol=0.125, rtol=0):
             print("✅ Triton and Torch match")
         else:
@@ -339,8 +339,8 @@ if __name__ == "__main__":
 
     @triton.testing.perf_report(configs)
     def benchmark(M, N, K, provider, fp8_inputs):
-        a = torch.randn((M, K), device=device, dtype=torch.float16)
-        b = torch.randn((K, N), device=device, dtype=torch.float16)
+        a = torch.randn((M, K), device=device, dtype=torch.bfloat16)
+        b = torch.randn((K, N), device=device, dtype=torch.bfloat16)
         if fp8_inputs:
             a = a.to(torch.float8_e5m2)
             b = b.T

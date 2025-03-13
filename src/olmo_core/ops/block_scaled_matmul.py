@@ -246,7 +246,7 @@ def matmul_kernel(
     tl.store(c_ptrs, c, mask=c_mask)
 
 
-def matmul(a, b, activation=""):
+def matmul(a, b):
     # Check constraints.
     assert a.shape[1] == b.shape[0], "Incompatible dimensions"
     assert a.is_contiguous(), "Matrix A must be contiguous"
@@ -274,7 +274,6 @@ def matmul(a, b, activation=""):
         b.stride(1),  #
         c.stride(0),
         c.stride(1),  #
-        ACTIVATION=activation,  #
     )
 
     return c

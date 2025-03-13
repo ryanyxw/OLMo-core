@@ -360,4 +360,4 @@ if __name__ == "__main__":
         perf = lambda ms: 2 * M * N * K * 1e-12 / (ms * 1e-3)
         return perf(ms), perf(max_ms), perf(min_ms)
 
-    benchmark.run(show_plots=True, print_data=True)
+    benchmark.run(show_plots=False, print_data=True)

@@ -2,6 +2,8 @@ import torch
 import triton  # type: ignore
 import triton.language as tl  # type: ignore
 
+from .utils import is_cuda, is_hip_mi200
+
 
 def get_cuda_autotune_config():
     return [
@@ -279,8 +281,6 @@ def matmul(a, b, activation=""):
 
 
 if __name__ == "__main__":
-    from .utils import is_cuda, is_hip_mi200
-
     device = torch.device("cuda")
     torch.manual_seed(0)
 

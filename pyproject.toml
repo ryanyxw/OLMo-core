@@ -107,7 +107,7 @@ multi_line_output = 3
 line-length = 115
 
 [tool.ruff.lint]
-ignore = ["F403", "F405", "E501"]
+ignore = ["F403", "F405", "E501", "E731"]
 exclude = [
     ".bzr",
     ".direnv",

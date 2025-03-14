@@ -2,18 +2,30 @@ import torch
 import triton  # type: ignore
 import triton.language as tl  # type: ignore
 
-from .utils import cast_to_fp8, per_block_cast_to_fp8
+VEC_SIZE = 128
 
 
 def get_cuda_autotune_config():
     return [
         triton.Config(
-            {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 128, "GROUP_SIZE_M": 8},
+            {
+                "BLOCK_SIZE_M": 1 * VEC_SIZE,
+                "BLOCK_SIZE_N": 1 * VEC_SIZE,
+                "BLOCK_SIZE_K": 1 * VEC_SIZE,
+                "GROUP_SIZE_M": 8,
+                "VEC_SIZE": VEC_SIZE,
+            },
             num_stages=4,
             num_warps=4,
         ),
         triton.Config(
-            {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 128, "GROUP_SIZE_M": 8},
+            {
+                "BLOCK_SIZE_M": 1 * VEC_SIZE,
+                "BLOCK_SIZE_N": 1 * VEC_SIZE,
+                "BLOCK_SIZE_K": 1 * VEC_SIZE,
+                "GROUP_SIZE_M": 8,
+                "VEC_SIZE": VEC_SIZE,
+            },
             num_stages=3,
             num_warps=8,
         ),
@@ -54,6 +66,7 @@ def matmul_kernel_fp8_fp8_bf16(
     BLOCK_SIZE_N: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
     GROUP_SIZE_M: tl.constexpr,
+    VEC_SIZE: tl.constexpr,
 ):
     """
     Kernel for computing the matmul C = A x B.
@@ -83,8 +96,8 @@ def matmul_kernel_fp8_fp8_bf16(
     a_ptrs = a_ptr + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
     b_ptrs = b_ptr + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
 
-    offs_sm = (pid_m * (BLOCK_SIZE_M // 128) + tl.arange(0, BLOCK_SIZE_M // 128)) % M
-    offs_sn = (pid_n * (BLOCK_SIZE_N // 128) + tl.arange(0, BLOCK_SIZE_N // 128)) % N
+    offs_sm = (pid_m * (BLOCK_SIZE_M // VEC_SIZE) + tl.arange(0, BLOCK_SIZE_M // VEC_SIZE)) % M
+    offs_sn = (pid_n * (BLOCK_SIZE_N // VEC_SIZE) + tl.arange(0, BLOCK_SIZE_N // VEC_SIZE)) % N
     # TODO: this isn't right
     a_scale_ptrs = a_scale_ptr + (offs_sm[:, None] * stride_asm + offs_k[None, :] * stride_ask)
     b_scale_ptrs = b_scale_ptr + (offs_k[:, None] * stride_bsk + offs_sn[None, :] * stride_bsn)
@@ -106,8 +119,8 @@ def matmul_kernel_fp8_fp8_bf16(
         # Advance the ptrs to the next K block.
         a_ptrs += BLOCK_SIZE_K * stride_ak
         b_ptrs += BLOCK_SIZE_K * stride_bk
-        a_scale_ptrs += (BLOCK_SIZE_K // 128) * stride_ask
-        b_scale_ptrs += (BLOCK_SIZE_K // 128) * stride_bsk
+        a_scale_ptrs += (BLOCK_SIZE_K // VEC_SIZE) * stride_ask
+        b_scale_ptrs += (BLOCK_SIZE_K // VEC_SIZE) * stride_bsk
 
     c = accumulator.to(tl.bfloat16)
 
@@ -129,7 +142,9 @@ def matmul_fp8_fp8_bf16(
     assert a.is_contiguous(), "LHS must be contiguous"
     M, K = a.shape
     K, N = b.shape
-    assert M % 128 == 0 and K % 128 == 0 and N % 128 == 0, "All dimensions must be multiples of 128"
+    assert (
+        M % VEC_SIZE == 0 and K % VEC_SIZE == 0 and N % VEC_SIZE == 0
+    ), f"All dimensions must be multiples of {VEC_SIZE}"
 
     # Allocates output.
     c = torch.empty((M, N), device=a.device, dtype=torch.bfloat16)
@@ -164,6 +179,8 @@ def matmul_fp8_fp8_bf16(
 
 
 if __name__ == "__main__":
+    from olmo_core.float8.utils import cast_to_fp8, per_block_cast_to_fp8
+
     device = torch.device("cuda")
     torch.manual_seed(0)
 

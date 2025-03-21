@@ -5,7 +5,7 @@ import torch
 
 def cast_to_fp8(x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """
-    Cast a tensor to FP8 with scaling factors calculated from contiguous blocks of 128 elements
+    Downcast a tensor to FP8 with scaling factors calculated from contiguous blocks of 128 elements
     in last dimension of the tensor. The size of the last dimension must be divisible by 128.
 
     :returns: The FP8 tensor and its scaling factors.
@@ -17,6 +17,15 @@ def cast_to_fp8(x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     x_amax = x.abs().float().amax(dim=-1).view(*in_shape[:-1], -1).clamp(1e-4)
     x = (x * (448.0 / x_amax.unsqueeze(-1))).to(torch.float8_e4m3fn)
     return x.view(in_shape), x_amax / 448.0
+
+
+def cast_from_fp8(
+    x: torch.Tensor, scale: torch.Tensor, *, dtype: torch.dtype = torch.float32
+) -> torch.Tensor:
+    """
+    Upcast a tensor from FP8 to a higher precision.
+    """
+    return x.to(dtype) * scale.unsqueeze(-1)
 
 
 def per_block_cast_to_fp8(x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:

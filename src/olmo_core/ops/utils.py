@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Optional, Tuple
 
 import torch
 
@@ -25,7 +25,12 @@ def cast_from_fp8(
     """
     Upcast a tensor from FP8 to a higher precision.
     """
-    return x.to(dtype) * scale.unsqueeze(-1)
+    assert x.dim() >= 2
+    assert x.size(-1) % 128 == 0
+    in_shape = x.shape
+    x = x.view(*in_shape[:-1], -1, 128)
+    x = x.to(dtype) * scale.unsqueeze(-1)
+    return x.view(in_shape)
 
 
 def per_block_cast_to_fp8(x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -43,3 +48,20 @@ def per_block_cast_to_fp8(x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     x_amax = x.abs().float().amax(dim=(-3, -1), keepdim=True).clamp(1e-4)
     x = (x * (448.0 / x_amax)).to(torch.float8_e4m3fn)
     return x.view(in_shape).contiguous(), (x_amax / 448.0).view(*in_shape[:-2], m // 128, n // 128)
+
+
+def cast_to(
+    x: torch.Tensor, dtype: torch.dtype, scale: Optional[torch.Tensor] = None
+) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    if x.dtype == dtype:
+        return x, None
+    elif dtype == torch.float8_e4m3fn:
+        return cast_to_fp8(x)
+    elif x.dtype == torch.float8_e4m3fn:
+        assert scale is not None
+        return cast_from_fp8(x, scale, dtype=dtype), None
+    elif dtype.is_floating_point and dtype.itemsize >= 2:
+        assert scale is None
+        return x.to(dtype), None
+    else:
+        raise NotImplementedError(dtype)

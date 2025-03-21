@@ -5,6 +5,8 @@ import torch.distributed as dist
 
 from olmo_core.utils import move_to_device
 
+from .utils import cast_to
+
 try:
     from olmo_core.kernels import moe as kernels
 except ImportError:
@@ -225,45 +227,129 @@ def repeat(x: torch.Tensor, tiling: Union[torch.Size, Tuple[int, ...]]) -> torch
 
 class AllToAllOp(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, x, output_split_sizes, input_split_sizes, group, async_op):
+    def forward(
+        ctx,
+        x: torch.Tensor,
+        output_split_sizes: Optional[List[int]],
+        input_split_sizes: Optional[List[int]],
+        group: Optional[dist.ProcessGroup],
+        async_op: bool,
+        dtype: Optional[torch.dtype],
+    ):
+        og_dtype = x.dtype
+        if dtype is None:
+            dtype = og_dtype
+
+        # Maybe cast ``x`` to the target communication dtype.
+        x, scale = cast_to(x, dtype)
+
+        # If ``x`` was downcast to, say, FP8, we need to all-to-all the ``scale``.
+        scale_handle: Optional[dist.Work] = None
+        out_scale: Optional[torch.Tensor] = None
+        if scale is not None:
+            if output_split_sizes is not None:
+                out_scale = torch.empty(
+                    (sum(output_split_sizes),) + scale.shape[1:], device=x.device, dtype=scale.dtype
+                )
+            else:
+                out_scale = torch.empty_like(scale)
+
+            scale_handle = dist.all_to_all_single(
+                out_scale,
+                scale,
+                output_split_sizes=output_split_sizes,
+                input_split_sizes=input_split_sizes,
+                group=group,
+                async_op=True,
+            )
+
+        # Now all-to-all ``x``.
         if output_split_sizes is not None:
             out = torch.empty(
-                (sum(output_split_sizes),) + x.shape[1:], device=x.device, dtype=x.dtype
+                (sum(output_split_sizes),) + x.shape[1:], device=x.device, dtype=dtype
             )
         else:
-            out = torch.empty_like(x)
+            out = torch.empty_like(x, dtype=dtype)
 
-        ctx.input_shape = x.shape
-        ctx.output_split_sizes = output_split_sizes
-        ctx.input_split_sizes = input_split_sizes
-        ctx.group = group
         handle = dist.all_to_all_single(
             out,
             x,
             output_split_sizes=output_split_sizes,
             input_split_sizes=input_split_sizes,
             group=group,
-            async_op=async_op,
+            async_op=True,
         )
+        assert handle is not None
+
+        ctx.input_scale_shape = None if scale is None else scale.shape
+        ctx.input_shape = x.shape
+        ctx.output_split_sizes = output_split_sizes
+        ctx.input_split_sizes = input_split_sizes
+        ctx.group = group
+        ctx.dtype = dtype
+
+        # Cast ``out`` back to input dtype if needed.
+        if out.dtype != og_dtype:
+            if scale_handle is not None:
+                scale_handle.wait()
+            handle.wait()
+            out, _ = cast_to(out, og_dtype, out_scale)
+
+        if not async_op:
+            handle.wait()
+            handle = None
+
         return out, handle
 
     @staticmethod
     def backward(ctx, grad, _):
-        if ctx.needs_input_grad[0]:
-            out = torch.empty(
-                ctx.input_shape,
-                device=grad.device,
-                dtype=grad.dtype,
+        if not ctx.needs_input_grad[0]:
+            return None, None, None, None, None, None
+
+        og_dtype = grad.dtype
+        dtype = ctx.dtype
+
+        # Maybe cast ``grad`` to the target communication dtype.
+        grad, grad_scale = cast_to(grad, dtype)
+
+        # If ``grad`` was downcast to, say, FP8, we need to all-to-all the ``scale``.
+        scale_handle: Optional[dist.Work] = None
+        out_scale: Optional[torch.Tensor] = None
+        if grad_scale is not None:
+            assert ctx.input_scale_shape is not None
+            out_scale = torch.empty(
+                ctx.input_scale_shape, device=grad.device, dtype=grad_scale.dtype
             )
-            dist.all_to_all_single(
-                out,
-                grad,
+            scale_handle = dist.all_to_all_single(
+                out_scale,
+                grad_scale,
                 output_split_sizes=ctx.input_split_sizes,
                 input_split_sizes=ctx.output_split_sizes,
                 group=ctx.group,
+                async_op=True,
             )
-            return out, None, None, None, None
-        return None, None, None, None, None
+
+        # All-to-all the gradient.
+        out = torch.empty(
+            ctx.input_shape,
+            device=grad.device,
+            dtype=dtype,
+        )
+        dist.all_to_all_single(
+            out,
+            grad,
+            output_split_sizes=ctx.input_split_sizes,
+            input_split_sizes=ctx.output_split_sizes,
+            group=ctx.group,
+        )
+
+        # Cast output back to gradient dtype if needed.
+        if out.dtype != og_dtype:
+            if scale_handle is not None:
+                scale_handle.wait()
+            out, _ = cast_to(out, og_dtype, out_scale)
+
+        return out, None, None, None, None, None
 
 
 def all_to_all(
@@ -272,6 +358,7 @@ def all_to_all(
     input_split_sizes: Optional[List[int]] = None,
     group: Optional[dist.ProcessGroup] = None,
     async_op: bool = False,
+    dtype: Optional[torch.dtype] = None,
 ) -> Tuple[torch.Tensor, dist.Work]:
     return AllToAllOp.apply(  # type: ignore
         x,
@@ -279,6 +366,7 @@ def all_to_all(
         input_split_sizes,
         group,
         async_op,
+        dtype,
     )
 
 

@@ -1,6 +1,6 @@
 import torch
 
-from olmo_core.float8.utils import cast_from_fp8, cast_to_fp8, per_block_cast_to_fp8
+from olmo_core.ops.utils import cast_from_fp8, cast_to_fp8, per_block_cast_to_fp8
 
 
 def test_cast_to_fp8():

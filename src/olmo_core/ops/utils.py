@@ -29,7 +29,7 @@ def cast_from_fp8(
     assert x.size(-1) % 128 == 0
     in_shape = x.shape
     x = x.view(*in_shape[:-1], -1, 128)
-    x = x.to(dtype) * scale.unsqueeze(-1)
+    x = x.to(dtype) * scale.unsqueeze(-1).to(dtype)
     return x.view(in_shape)
 
 

@@ -11,7 +11,7 @@ from typing import Callable, List, Optional, TypeVar, Union, cast
 import torch
 import torch.distributed as dist
 from torch.distributed.device_mesh import DeviceMesh
-from torch.distributed.tensor import DTensor
+from torch.distributed.tensor import DTensor, distribute_tensor
 
 from ..exceptions import OLMoEnvironmentError
 from ..utils import logging_configured, move_to_device, set_env_var
@@ -438,6 +438,19 @@ def get_full_tensor(x: torch.Tensor) -> torch.Tensor:
         return x
 
 
+def distribute_like(source: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    if not isinstance(source, DTensor):
+        return get_full_tensor(target)
+
+    if isinstance(target, DTensor):
+        if target.device_mesh == source.device_mesh and target.placements == source.placements:
+            return target
+        else:
+            return target.redistribute(device_mesh=source.device_mesh, placements=source.placements)
+
+    return distribute_tensor(target, device_mesh=source.device_mesh, placements=source.placements)
+
+
 def do_n_at_a_time(
     f: Callable[[], T],
     *,
@@ -474,6 +487,13 @@ def do_n_at_a_time(
 class _HiddenTensor:
     def __init__(self, x: torch.Tensor):
         self.x = x
+
+    @property
+    def device(self) -> torch.device:
+        return self.x.device
+
+    def to(self, *args, **kwargs) -> "_HiddenTensor":
+        return _HiddenTensor(self.x.to(*args, **kwargs))
 
 
 def hide_from_torch(x: torch.Tensor) -> _HiddenTensor:

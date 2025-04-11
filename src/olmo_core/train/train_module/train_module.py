@@ -17,7 +17,7 @@ from olmo_core.exceptions import OLMoConfigurationError
 from olmo_core.nn.functional.cross_entropy_loss import cross_entropy_loss
 from olmo_core.utils import move_to_device
 
-from ..common import ReduceType, get_inputs_for_loss
+from ..common import MetricMergeStrategy, ReduceType, get_inputs_for_loss
 
 if TYPE_CHECKING:
     from ..trainer import Trainer
@@ -122,26 +122,32 @@ class TrainModule(Stateful, metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def state_dict(self) -> Dict[str, Any]:
+    def state_dict(self, *, optim: bool = True) -> Dict[str, Any]:
         """
         Get the state dict to save or load.
+
+        :param optim: If set to ``False``, optimizer state is not returned in the state dict.
         """
         raise NotImplementedError
 
-    def state_dict_to_save(self) -> Dict[str, Any]:
+    def state_dict_to_save(self, *, optim: bool = True) -> Dict[str, Any]:
         """
         Can be overridden if the state dict to save should be different from the state dict to load.
         By default just returns :func:`state_dict()`.
-        """
-        return self.state_dict()
 
-    def state_dict_to_load(self, metadata: Metadata) -> Dict[str, Any]:
+        :param optim: If set to ``False``, optimizer state is not returned in the state dict.
+        """
+        return self.state_dict(optim=optim)
+
+    def state_dict_to_load(self, metadata: Metadata, *, optim: bool = True) -> Dict[str, Any]:
         """
         Can be overridden if the state dict to load should be different from the state dict to save.
         By default just returns :func:`state_dict()`.
+
+        :param optim: If set to ``False``, optimizer state is not returned in the state dict.
         """
         del metadata
-        return self.state_dict()
+        return self.state_dict(optim=optim)
 
     @abstractmethod
     def load_state_dict(self, state_dict: Dict[str, Any]) -> None:
@@ -184,6 +190,7 @@ class TrainModule(Stateful, metaclass=ABCMeta):
         value: Union[float, torch.Tensor],
         reduce_type: Optional[ReduceType] = None,
         namespace: Optional[str] = None,
+        merge_strategy: MetricMergeStrategy = MetricMergeStrategy.warn,
     ):
         """
         Record a metric. This is simply a convenience method that calls out to
@@ -192,7 +199,9 @@ class TrainModule(Stateful, metaclass=ABCMeta):
         .. seealso::
             Use :meth:`record_ce_loss()` to record the cross-entropy loss, specifically.
         """
-        return self.trainer.record_metric(name, value, reduce_type=reduce_type, namespace=namespace)
+        return self.trainer.record_metric(
+            name, value, reduce_type=reduce_type, namespace=namespace, merge_strategy=merge_strategy
+        )
 
     def record_ce_loss(
         self, value: Union[float, torch.Tensor], reduce_type: Optional[ReduceType] = None
@@ -255,14 +264,16 @@ class BasicTrainModule(TrainModule):
                 f"micro-batch size ({self.rank_microbatch_size:,d}) x DP world size ({ws})"
             )
 
-    def state_dict(self) -> Dict[str, Any]:
+    def state_dict(self, *, optim: bool = True) -> Dict[str, Any]:
         sd_options = dist_cp_sd.StateDictOptions(full_state_dict=False, cpu_offload=True)
-        return {
+        state_dict: Dict[str, Any] = {
             "model": dist_cp_sd.get_model_state_dict(self.model, options=sd_options),
-            "optim": dist_cp_sd.get_optimizer_state_dict(
-                self.model, self.optim, options=sd_options
-            ),
         }
+        if optim:
+            state_dict["optim"] = dist_cp_sd.get_optimizer_state_dict(
+                self.model, self.optim, options=sd_options
+            )
+        return state_dict
 
     def load_state_dict(self, state_dict: Dict[str, Any]) -> None:
         dist_cp_sd.set_model_state_dict(

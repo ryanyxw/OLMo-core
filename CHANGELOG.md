@@ -7,9 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- Added 50B Dolmino 11/24 mix.
+- Added support for auxiliary-loss-free MoE load-balancing, similar to DeepSeek-v3. You can activate this by setting `bias_gamma` to a non-zero float in your `MoERouter` config.
+- Added support for sequence-level MoE load balancing loss.
+- Compatibility with B200s.
+- Added support for `warmup_fraction` as an alternative to `warmup_steps` in all schedulers, allowing warmup to be specified as a fraction of total training steps.
+- A better config for the 1B model, ported from the old OLMo trainer.
+- Added `auto_resume` option to `CometCallback` for resume an existing run.
+- (BETA) Added methods `load_hf_model` and `save_hf_model` for saving supported OLMo Core models to HF transformers format.
+Also added lower-level methods for converting state between the formats.
+- Added the ability to run the evaluator callback on `.pre_train()` by setting `eval_on_startup=True`, and to cancel the run after the first time evals run by setting `cancel_after_first_eval=True`.
+- Added support for label mask files with numpy FSL datasets.
+
 ### Changed
 
 - `TransformerTrainModuleConfig` can now be used to build a `TransformerPipelineTrainModule` by adding a `pp_config` spec. This makes the `TransformerPipelineTrainModuleConfig` redundant, but it will be kept around for backwards compatibility until the next major release.
+- Several state dict methods in `TrainModule` now take an `optim` option, which can disable the use of optimizer state.
+- Updated `Float8Config` for latest version of `torchao`.
+- Undo a fix applied to `olmo_core.data.numpy_dataset.NumpyFSLDatasetMixture` that was generating a mismatch between the shape of instances in the dataset and the shape of instances in the data loader.
+- Made the 1B and 7B scripts more similar to each other.
+- Changed underlying logic and top-level arguments of `convert_checkpoint_from_hf.py` and `convert_checkpoint_to_hf.py`.
+
+### Fixed
+
+- Fixed calculation of total steps based on epochs at the end of a training job.
+- Fixed a bug where the trainer might try to save a duplicate final checkpoint if the run that already completed was restarted.
+- When submitting a Beaker job from a branch that's tracking a GitHub fork, OLMo-core now instructs Beaker to pull from the fork instead of from the main repo.
+- Made Beaker image resolution more robust.
 
 ## [v2.0.1](https://github.com/allenai/OLMo-core/releases/tag/v2.0.1) - 2025-03-18
 
@@ -24,6 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The official config for the 32B had unrealistic batch size settings.
 - Ignore `group_overrides` for frozen parameters instead of throwing an error.
+- Bump `ai2-olmo-eval==0.7.1`, which fixes makes the in-loop evaluation consistent with OLMES by removing [a bias](https://github.com/allenai/OLMo-in-loop-evals/pull/6)
 
 ### Removed
 
@@ -42,6 +69,7 @@ This major release introduces a few breaking changes. We've provided more inform
 - Added in-loop evals for Minerva, GSM, HumanEval, MBPP (`ai2-olmo-eval==0.7.0`)
 - Added `CosWithWarmupAndLinearDecay` learning rate scheduler
 - Added `WSD` learning rate scheduler
+- Added `RunDuration` in `model_ladder` to configure training durations in terms of Chinchilla multipliers.
 
 ### Changed
 

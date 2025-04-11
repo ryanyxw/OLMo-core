@@ -2,7 +2,7 @@ import contextlib
 import logging
 from dataclasses import replace
 from functools import cached_property
-from typing import Any, Dict, Generator, Optional, Tuple, Union, cast
+from typing import Any, Dict, Generator, Optional, Tuple, Union
 
 import torch
 import torch.distributed as dist
@@ -30,9 +30,9 @@ from olmo_core.distributed.utils import (
     is_distributed,
 )
 from olmo_core.exceptions import OLMoConfigurationError
-from olmo_core.float8 import Float8Config, Float8Handler
+from olmo_core.float8 import Float8Config
 from olmo_core.nn.lm_head import LMOutputWithLoss
-from olmo_core.nn.transformer import NormalizedTransformer, Transformer
+from olmo_core.nn.transformer import Transformer
 from olmo_core.optim import OptimConfig, SkipStepOptimizer
 from olmo_core.optim.scheduler import Scheduler
 from olmo_core.utils import gc_cuda, get_default_device, log_once, move_to_device
@@ -138,11 +138,6 @@ class TransformerTrainModule(TrainModule):
                 "Training parallelism configs are only valid for distributed training"
             )
 
-        self.float8_handler: Optional[Float8Handler] = None
-        if float8_config is not None:
-            float8_config.compile = compile_model
-            self.float8_handler = float8_config.build()
-
         # Parallelize model.
         self.model = parallelize_model(
             model,
@@ -151,7 +146,7 @@ class TransformerTrainModule(TrainModule):
             max_sequence_length=max_sequence_length,
             rank_microbatch_size=rank_microbatch_size,
             compile_model=compile_model,
-            float8_handler=self.float8_handler,
+            float8_config=float8_config,
             dp_config=dp_config,
             tp_config=tp_config,
             cp_config=cp_config,
@@ -227,10 +222,10 @@ class TransformerTrainModule(TrainModule):
                 f"micro-batch size ({self.rank_microbatch_size:,d}) x DP world size ({dp_ws})"
             )
 
-    def state_dict(self) -> Dict[str, Any]:
-        return self._get_state_dict(self.state_dict_save_opts)
+    def state_dict(self, *, optim: bool = True) -> Dict[str, Any]:
+        return self._get_state_dict(self.state_dict_save_opts, optim=optim)
 
-    def state_dict_to_load(self, metadata: Metadata) -> Dict[str, Any]:
+    def state_dict_to_load(self, metadata: Metadata, *, optim: bool = True) -> Dict[str, Any]:
         load_opts = self.state_dict_load_opts
 
         if "optim.param_groups.0.params" in metadata.state_dict_metadata:
@@ -252,24 +247,24 @@ class TransformerTrainModule(TrainModule):
                 )
                 load_opts = replace(load_opts, flatten_optimizer_state_dict=True)
 
-        state_dict = self._get_state_dict(load_opts)
-        if self.load_key_mapping is not None:
-            _swap_param_keys(state_dict, self.load_key_mapping, metadata=metadata)
-
         has_optim_state: bool = False
         for key in metadata.state_dict_metadata.keys():
             if key.startswith("optim."):
                 has_optim_state = True
                 break
 
-        if not has_optim_state:
-            del state_dict["optim"]
+        if optim and not has_optim_state:
             log.warning("No optimizer state found in checkpoint")
+            optim = False
+
+        state_dict = self._get_state_dict(load_opts, optim=optim)
+        if self.load_key_mapping is not None:
+            _swap_param_keys(state_dict, self.load_key_mapping, metadata=metadata)
 
         return state_dict
 
-    def state_dict_to_save(self) -> Dict[str, Any]:
-        return self._get_state_dict(self.state_dict_save_opts)
+    def state_dict_to_save(self, *, optim: bool = True) -> Dict[str, Any]:
+        return self._get_state_dict(self.state_dict_save_opts, optim=optim)
 
     def load_state_dict(self, state_dict: Dict[str, Any]) -> None:
         if self.load_key_mapping is not None:
@@ -307,16 +302,12 @@ class TransformerTrainModule(TrainModule):
         batch_num_tokens_for_loss = move_to_device(
             (batch["labels"] != self.label_ignore_index).sum(), self.device
         )
-        if self.cp_enabled:
-            assert self._cp_config is not None
-            batch_num_tokens_for_loss = batch_num_tokens_for_loss / self._cp_config.degree
 
         # Batch losses to record.
         ce_batch_loss = move_to_device(torch.tensor(0.0), self.device)
         z_batch_loss: Optional[torch.Tensor] = None
         if self.z_loss_multiplier is not None:
             z_batch_loss = move_to_device(torch.tensor(0.0), self.device)
-        auxiliary_batch_losses: Dict[str, torch.Tensor] = {}
 
         # Split into micro-batches.
         if self.rank_microbatch_size < (seq_len := batch["input_ids"].shape[1]):
@@ -356,26 +347,14 @@ class TransformerTrainModule(TrainModule):
                     z_batch_loss += get_local_tensor(z_loss.detach())
                     del z_loss
 
-                # Optionally get model auxiliary losses and update the total batch auxiliary losses.
-                auxiliary_losses = self.model.compute_auxiliary_losses(
-                    batch_num_tokens_for_loss, reset=True
-                )
-                for loss_name, loss_val in auxiliary_losses.items():
-                    loss += loss_val
-                    loss_val = get_local_tensor(loss_val.detach())
-                    if loss_name in auxiliary_batch_losses:
-                        auxiliary_batch_losses[loss_name] += loss_val
-                    else:
-                        auxiliary_batch_losses[loss_name] = loss_val
-                del auxiliary_losses
-
                 # Run backward pass.
                 loss.backward()
 
         del batch  # In case this helps with memory utilization.
 
+        self.model.post_batch(dry_run=dry_run)
+
         if dry_run:
-            self.model.reset_auxiliary_losses()
             self.model.reset_auxiliary_metrics()
             return
 
@@ -391,24 +370,23 @@ class TransformerTrainModule(TrainModule):
         else:
             self.record_ce_loss(ce_batch_loss, ReduceType.mean)
         if z_batch_loss is not None:
+            assert self.z_loss_multiplier is not None
             self.record_metric(
                 "Z loss",
                 z_batch_loss,
                 ReduceType.mean,
                 namespace="train",
             )
-        for loss_name, loss_val in auxiliary_batch_losses.items():
             self.record_metric(
-                loss_name,
-                loss_val,
+                "Z loss (unscaled)",
+                z_batch_loss / self.z_loss_multiplier,
                 ReduceType.mean,
                 namespace="train",
             )
 
         # And additional metrics.
         for metric_name, (metric_val, reduction) in self.model.compute_auxiliary_metrics(
-            batch_num_tokens_for_loss,
-            reset=True,
+            reset=True
         ).items():
             self.record_metric(
                 metric_name,
@@ -459,10 +437,6 @@ class TransformerTrainModule(TrainModule):
             if isinstance(self.optim, SkipStepOptimizer):
                 self.optim.latest_grad_norm = grad_norm
 
-        # Sync Float8 AMAXs (argmax of abs(max)) and scales.
-        if self.float8_handler is not None:
-            self.float8_handler.sync_float8_amax_and_scale_history(self.model)
-
         # Maybe adjust learning rate.
         if self.scheduler is not None:
             for group_idx, group in enumerate(self.optim.param_groups):
@@ -504,17 +478,7 @@ class TransformerTrainModule(TrainModule):
         if isinstance(self.optim, SkipStepOptimizer):
             self.record_metric("step skipped", self.optim.step_skipped, namespace="optim")
 
-        # Maybe re-normalize matrices for nGPT-type models.
-        # NOTE: sometimes 'isinstance' checks fail when the model is wrapped in some way.
-        if isinstance(self.model, NormalizedTransformer) or hasattr(
-            self.model, "normalize_matrices"
-        ):
-            cast(NormalizedTransformer, self.model).normalize_matrices()
-
-        # Calculate Float8 dynamic AMAX/scale for all parameters.
-        # For FSDP2 this issues a single all-reduce for all parameters at once.
-        if self.float8_handler is not None:
-            self.float8_handler.precompute_float8_dynamic_scale_for_fsdp(self.model)
+        self.model.post_optim_step()
 
     def zero_grads(self):
         self.optim.zero_grad(set_to_none=True)
@@ -565,13 +529,17 @@ class TransformerTrainModule(TrainModule):
                 stack.enter_context(torch.autocast(self.device.type, dtype=self.autocast_precision))
             yield
 
-    def _get_state_dict(self, sd_options: dist_cp_sd.StateDictOptions) -> Dict[str, Any]:
-        return {
+    def _get_state_dict(
+        self, sd_options: dist_cp_sd.StateDictOptions, optim: bool = True
+    ) -> Dict[str, Any]:
+        state_dict: Dict[str, Any] = {
             "model": dist_cp_sd.get_model_state_dict(self.model, options=sd_options),
-            "optim": dist_cp_sd.get_optimizer_state_dict(
-                self.model, self.optim, options=sd_options
-            ),
         }
+        if optim:
+            state_dict["optim"] = dist_cp_sd.get_optimizer_state_dict(
+                self.model, self.optim, options=sd_options
+            )
+        return state_dict
 
     def _clip_grad_norm(
         self, max_grad_norm: float, norm_type: float = 2.0, foreach: Optional[bool] = None

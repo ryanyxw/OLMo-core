@@ -24,7 +24,7 @@ from olmo_core.train.train_module import (
 SEQUENCE_LENGTH = 4096
 GLOBAL_BATCH_SIZE = 1024 * SEQUENCE_LENGTH
 MAX_DURATION = int(4e12)
-SKIP_STEP_OPTIM = False
+SKIP_STEP_OPTIM = True
 
 
 def build_model_config(common: CommonComponents) -> TransformerConfig:

@@ -7,7 +7,12 @@ from olmo_core.float8 import AOFloat8LinearConfig, Float8Config
 from olmo_core.internal.common import CLUSTER_TO_GPU_TYPE
 from olmo_core.internal.experiment import CommonComponents, main
 from olmo_core.nn.transformer import TransformerConfig
-from olmo_core.optim import CosWithWarmup, OptimGroupOverride, SkipStepAdamWConfig
+from olmo_core.optim import (
+    AdamWConfig,
+    CosWithWarmup,
+    OptimGroupOverride,
+    SkipStepAdamWConfig,
+)
 from olmo_core.train import Duration, TrainerConfig
 from olmo_core.train.callbacks import CheckpointerCallback, CometCallback, WandBCallback
 from olmo_core.train.train_module import (
@@ -19,6 +24,7 @@ from olmo_core.train.train_module import (
 SEQUENCE_LENGTH = 4096
 GLOBAL_BATCH_SIZE = 1024 * SEQUENCE_LENGTH
 MAX_DURATION = int(4e12)
+SKIP_STEP_OPTIM = False
 
 
 def build_model_config(common: CommonComponents) -> TransformerConfig:
@@ -32,17 +38,21 @@ def build_train_module_config(common: CommonComponents) -> TransformerTrainModul
         if all("B200" in g for g in gpus):
             rank_microbatch_size *= 2
 
+    optim_kwargs = dict(
+        lr=3e-4,
+        weight_decay=0.1,
+        betas=(0.9, 0.95),
+        group_overrides=[
+            OptimGroupOverride(params=["embeddings.weight"], opts=dict(weight_decay=0.0))
+        ],
+    )
+
     return TransformerTrainModuleConfig(
         rank_microbatch_size=rank_microbatch_size,
         max_sequence_length=common.dataset.effective_sequence_length,
-        optim=SkipStepAdamWConfig(
-            lr=3e-4,
-            weight_decay=0.1,
-            betas=(0.9, 0.95),
-            group_overrides=[
-                OptimGroupOverride(params=["embeddings.weight"], opts=dict(weight_decay=0.0))
-            ],
-        ),
+        optim=SkipStepAdamWConfig(compile=True, **optim_kwargs)
+        if SKIP_STEP_OPTIM
+        else AdamWConfig(fused=True, **optim_kwargs),
         compile_model=True,
         dp_config=TransformerDataParallelConfig(
             name=DataParallelType.hsdp,

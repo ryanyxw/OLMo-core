@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 
 from ..config import DType
+from ..distributed.utils import get_local_tensor
 from .config import OptimConfig
 from .skip_step_optimizer import SkipStepOptimizer
 
@@ -24,15 +25,20 @@ def adamw_step(
     if p.grad is None:
         return
 
+    t = get_local_tensor(p)
+    grad = get_local_tensor(p.grad)
+    exp_avg = get_local_tensor(exp_avg)
+    exp_avg_sq = get_local_tensor(exp_avg_sq)
+
     beta1, beta2 = betas
 
     # Perform step weight decay.
-    p.mul_(1 - step_factor * (lr * weight_decay))
+    t.mul_(1 - step_factor * (lr * weight_decay))
 
     # Decay the first and second moment running average coefficient.
-    exp_avg.lerp_(p.grad.type_as(exp_avg), (step_factor * (1 - beta1)).type_as(exp_avg))
+    exp_avg.lerp_(grad.type_as(exp_avg), (step_factor * (1 - beta1)).type_as(exp_avg))
     exp_avg_sq.mul_(1 - step_factor * (1 - beta2))
-    exp_avg_sq.add_(step_factor * p.grad * p.grad, alpha=1 - beta2)
+    exp_avg_sq.add_(step_factor * grad * grad, alpha=1 - beta2)
 
     bias_correction1 = 1 - beta1 ** (step + 1)
     bias_correction2 = 1 - beta2 ** (step + 1)
@@ -43,7 +49,7 @@ def adamw_step(
 
     update = -step_size * torch.div(exp_avg, denom)
     update.mul_(step_factor)
-    p.add_(update)
+    t.add_(update)
 
 
 class SkipStepAdamW(SkipStepOptimizer):

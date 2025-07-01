@@ -54,7 +54,7 @@ dev = [
     "sphinx-autodoc-typehints==1.23.3",
     "sphinx-inline-tabs",
 ]
-beaker = ["beaker-py>=1.36.0,<2.0", "GitPython>=3.0,<4.0"]
+beaker = ["beaker-py>=1.36.0,<2.0", "GitPython>=3.0,<4.0", "grpio>=1.70.0"]
 wandb = ["wandb"]
 comet = ["comet_ml"]
 transformers = ["transformers"]

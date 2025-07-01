@@ -77,6 +77,13 @@ docker-image :
 		-t olmo-core:$(IMAGE_TAG) .
 	echo "Built image 'olmo-core:$(IMAGE_TAG)', size: $$(docker inspect -f '{{ .Size }}' olmo-core:$(IMAGE_TAG) | numfmt --to=si)"
 
+.PHONY : docker-image-ngc
+docker-image-ngc :
+	docker build -f src/Dockerfile.ngc \
+		--build-arg BUILDKIT_INLINE_CACHE=1 \
+		-t olmo-core:$(IMAGE_TAG)-ngc .
+	echo "Built image 'olmo-core:$(IMAGE_TAG)-ngc', size: $$(docker inspect -f '{{ .Size }}' olmo-core:$(IMAGE_TAG)-ngc | numfmt --to=si)"
+
 .PHONY : ghcr-image
 ghcr-image : docker-image
 	docker tag olmo-core:$(IMAGE_TAG) ghcr.io/allenai/olmo-core:$(IMAGE_TAG)
@@ -90,6 +97,10 @@ BEAKER_USER = $(shell beaker account whoami --format=json | jq -r '.[0].name')
 .PHONY : beaker-image
 beaker-image : docker-image
 	./src/scripts/beaker/create_beaker_image.sh olmo-core:$(IMAGE_TAG) olmo-core-$(IMAGE_TAG) $(BEAKER_WORKSPACE)
+
+.PHONY : beaker-image-ngc
+beaker-image-ngc : docker-image-ngc
+	./src/scripts/beaker/create_beaker_image.sh olmo-core:$(IMAGE_TAG)-ngc olmo-core-$(IMAGE_TAG)-ngc $(BEAKER_WORKSPACE)
 
 .PHONY : get-beaker-workspace
 get-beaker-workspace :

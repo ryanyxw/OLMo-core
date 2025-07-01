@@ -1,0 +1,39 @@
+ARG BASE_IMAGE=nvcr.io/nvidia/pytorch:25.04-py3
+
+#########################################################################
+# Build image
+#########################################################################
+
+FROM ${BASE_IMAGE}
+
+WORKDIR /app/build
+
+ENV TORCH_CUDA_ARCH_LIST="8.0 9.0"
+
+# Install grouped-gemm.
+ARG GROUPED_GEMM_VERSION="grouped_gemm @ git+https://github.com/fanshiqing/grouped_gemm@v1.1.4"
+RUN pip install --no-build-isolation --no-cache-dir "${GROUPED_GEMM_VERSION}"
+
+# Install ring-flash-attn.
+ARG RING_FLASH_ATTN_VERSION=0.1.5
+RUN pip install --no-build-isolation --no-cache-dir ring-flash-attn==${RING_FLASH_ATTN_VERSION}
+
+# Install liger-kernel.
+ARG LIGER_KERNEL_VERSION=0.5.10
+RUN pip install --no-build-isolation --no-cache-dir liger-kernel==${LIGER_KERNEL_VERSION}
+
+# Install torchao.
+ARG TORCHAO_VERSION=0.11.0
+RUN pip install --no-cache-dir torchao==${TORCHAO_VERSION}
+
+# Install direct dependencies, but not source code.
+COPY pyproject.toml .
+COPY src/olmo_core/__init__.py src/olmo_core/__init__.py
+COPY src/olmo_core/version.py src/olmo_core/version.py
+RUN pip install --no-cache-dir '.[all]' && \
+    pip uninstall -y ai2-olmo-core
+
+WORKDIR /app/olmo-core
+RUN rm -rf /app/build/
+
+LABEL org.opencontainers.image.source https://github.com/allenai/OLMo-core

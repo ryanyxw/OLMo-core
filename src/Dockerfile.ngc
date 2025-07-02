@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=nvcr.io/nvidia/pytorch:25.04-py3
+ARG BASE_IMAGE=nvcr.io/nvidia/pytorch:25.05-py3
 
 #########################################################################
 # Build image
@@ -30,7 +30,6 @@ RUN pip install --no-cache-dir torchao==${TORCHAO_VERSION}
 COPY pyproject.toml .
 COPY src/olmo_core/__init__.py src/olmo_core/__init__.py
 COPY src/olmo_core/version.py src/olmo_core/version.py
-RUN which pip
 RUN pip install --no-cache-dir '.[all]' && \
     pip uninstall -y ai2-olmo-core
 

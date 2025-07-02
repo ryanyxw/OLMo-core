@@ -81,8 +81,8 @@ docker-image :
 docker-image-ngc :
 	docker build -f src/Dockerfile.ngc \
 		--build-arg BUILDKIT_INLINE_CACHE=1 \
-		-t olmo-core:$(IMAGE_TAG)-ngc .
-	echo "Built image 'olmo-core:$(IMAGE_TAG)-ngc', size: $$(docker inspect -f '{{ .Size }}' olmo-core:$(IMAGE_TAG)-ngc | numfmt --to=si)"
+		-t olmo-core:ngc .
+	echo "Built image 'olmo-core:ngc', size: $$(docker inspect -f '{{ .Size }}' olmo-core:ngc | numfmt --to=si)"
 
 .PHONY : ghcr-image
 ghcr-image : docker-image
@@ -100,7 +100,7 @@ beaker-image : docker-image
 
 .PHONY : beaker-image-ngc
 beaker-image-ngc : docker-image-ngc
-	./src/scripts/beaker/create_beaker_image.sh olmo-core:$(IMAGE_TAG)-ngc olmo-core-$(IMAGE_TAG)-ngc $(BEAKER_WORKSPACE)
+	./src/scripts/beaker/create_beaker_image.sh olmo-core:ngc olmo-core-ngc $(BEAKER_WORKSPACE)
 
 .PHONY : get-beaker-workspace
 get-beaker-workspace :

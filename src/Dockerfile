@@ -69,6 +69,9 @@ RUN pip install --no-build-isolation --no-cache-dir ring-flash-attn==${RING_FLAS
 ARG LIGER_KERNEL_VERSION=0.5.10
 RUN pip install --no-build-isolation --no-cache-dir liger-kernel==${LIGER_KERNEL_VERSION}
 
+# Install transformer engine.
+RUN pip install --no-build-isolation --no-cache-dir transformer_engine[pytorch]
+
 # Install direct dependencies, but not source code.
 COPY pyproject.toml .
 COPY src/olmo_core/__init__.py src/olmo_core/__init__.py

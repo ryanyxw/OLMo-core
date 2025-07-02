@@ -70,7 +70,8 @@ ARG LIGER_KERNEL_VERSION=0.5.10
 RUN pip install --no-build-isolation --no-cache-dir liger-kernel==${LIGER_KERNEL_VERSION}
 
 # Install transformer engine.
-RUN pip install --no-build-isolation --no-cache-dir transformer_engine[pytorch]
+RUN conda install -c conda-forge transformer-engine-torch
+# RUN pip install --no-build-isolation --no-cache-dir transformer_engine[pytorch]
 
 # Install direct dependencies, but not source code.
 COPY pyproject.toml .

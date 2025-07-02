@@ -2,7 +2,7 @@ ARG UBUNTU_VERSION=22.04
 ARG TARGET_PLATFORM=x86_64
 ARG CUDA_VERSION=12.8.1
 ARG CUDA_VERSION_PATH=cu128
-ARG PYTHON_VERSION=3.12
+ARG PYTHON_VERSION=3.11
 ARG BASE_IMAGE=ubuntu:${UBUNTU_VERSION}
 ARG DEVEL_BASE_IMAGE=nvidia/cuda:${CUDA_VERSION}-devel-ubuntu${UBUNTU_VERSION}
 
@@ -70,8 +70,7 @@ ARG LIGER_KERNEL_VERSION=0.5.10
 RUN pip install --no-build-isolation --no-cache-dir liger-kernel==${LIGER_KERNEL_VERSION}
 
 # Install transformer engine.
-RUN conda install -c conda-forge transformer-engine-torch
-# RUN pip install --no-build-isolation --no-cache-dir transformer_engine[pytorch]
+RUN pip install --no-build-isolation --no-cache-dir transformer_engine[pytorch]
 
 # Install direct dependencies, but not source code.
 COPY pyproject.toml .

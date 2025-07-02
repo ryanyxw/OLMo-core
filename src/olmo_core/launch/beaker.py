@@ -80,6 +80,11 @@ class OLMoCoreBeakerImage(StrEnum):
     The stable image with CUDA pinned to 12.8.
     """
 
+    ngc_2505 = "olmo-core-ngc-25.05-py3"
+    """
+    Image based on an `NVIDIA GPU Cloud (NGC) PyTorch image <https://docs.nvidia.com/deeplearning/frameworks/pytorch-release-notes/overview.html>`_.
+    """
+
 
 @dataclass
 class BeakerEnvVar(Config):

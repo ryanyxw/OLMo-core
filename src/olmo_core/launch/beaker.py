@@ -112,7 +112,9 @@ DEFAULT_SETUP_STEPS = (
     "fi",
     f'git checkout "${GIT_REF_ENV_VAR}"',
     "git submodule update --init --recursive",
-    "conda shell.bash activate base",
+    "if command -v conda &> /dev/null; then",
+    "  conda shell.bash activate base",
+    "fi",
     "pip install -e '.[all]'",
     "pip freeze",
 )

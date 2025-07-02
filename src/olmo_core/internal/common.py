@@ -181,7 +181,9 @@ def build_launch_config(
             'git checkout "$GIT_REF"',
             "git submodule update --init --recursive",
             # Setup python environment.
-            "conda shell.bash activate base",
+            "if command -v conda &> /dev/null; then",
+            "  conda shell.bash activate base",
+            "fi",
             #  "pip install 'ai2-olmo-eval @ git+https://git@github.com/allenai/OLMo-in-loop-evals.git@epwalsh/debug'",
             "pip install -e '.[all]'",
             #  "pip install --upgrade beaker-py",

@@ -46,10 +46,12 @@ PYTHON_VERSION = 3.11
 TORCH_VERSION = 2.7.1
 TORCH_VERSION_SHORT = $(shell echo $(TORCH_VERSION) | tr -d .)
 INSTALL_CHANNEL = whl
-GROUPED_GEMM_VERSION = "grouped_gemm @ git+https://git@github.com/tgale96/grouped_gemm.git@main"
+# GROUPED_GEMM_VERSION = "grouped_gemm @ git+https://git@github.com/tgale96/grouped_gemm.git@main"
+GROUPED_GEMM_VERSION = "grouped_gemm @ git+https://github.com/fanshiqing/grouped_gemm@v1.1.4"
 FLASH_ATTN_VERSION = 2.7.4.post1
 RING_FLASH_ATTN_VERSION = 0.1.5
 LIGER_KERNEL_VERSION = 0.5.10
+NVIDIA_NGC_IMAGE_VERSION = 25.05-py3
 
 #--------------#
 # Build naming #
@@ -81,8 +83,12 @@ docker-image :
 docker-image-ngc :
 	docker build -f src/Dockerfile.ngc \
 		--build-arg BUILDKIT_INLINE_CACHE=1 \
-		-t olmo-core:ngc .
-	echo "Built image 'olmo-core:ngc', size: $$(docker inspect -f '{{ .Size }}' olmo-core:ngc | numfmt --to=si)"
+		--build-arg BASE_IMAGE=nvcr.io/nvidia/pytorch:$(NVIDIA_NGC_IMAGE_VERSION) \
+		--build-arg GROUPED_GEMM_VERSION=$(GROUPED_GEMM_VERSION) \
+		--build-arg RING_FLASH_ATTN_VERSION=$(RING_FLASH_ATTN_VERSION) \
+		--build-arg LIGER_KERNEL_VERSION=$(LIGER_KERNEL_VERSION) \
+		-t olmo-core:ngc-$(NVIDIA_NGC_IMAGE_VERSION) .
+	echo "Built image 'olmo-core:ngc-$(NVIDIA_NGC_IMAGE_VERSION)', size: $$(docker inspect -f '{{ .Size }}' olmo-core:ngc-$(NVIDIA_NGC_IMAGE_VERSION) | numfmt --to=si)"
 
 .PHONY : ghcr-image
 ghcr-image : docker-image
@@ -100,7 +106,7 @@ beaker-image : docker-image
 
 .PHONY : beaker-image-ngc
 beaker-image-ngc : docker-image-ngc
-	./src/scripts/beaker/create_beaker_image.sh olmo-core:ngc olmo-core-ngc $(BEAKER_WORKSPACE)
+	./src/scripts/beaker/create_beaker_image.sh olmo-core:ngc-$(NVIDIA_NGC_IMAGE_VERSION) olmo-core-ngc-$(NVIDIA_NGC_IMAGE_VERSION) $(BEAKER_WORKSPACE)
 
 .PHONY : get-beaker-workspace
 get-beaker-workspace :

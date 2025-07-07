@@ -8,9 +8,11 @@ from olmo_core.distributed.parallel import (
     build_world_mesh,
 )
 from olmo_core.distributed.utils import get_rank, init_distributed
-from olmo_core.utils import get_default_device
+from olmo_core.utils import get_default_device, prepare_cli_environment
 
 init_distributed()
+prepare_cli_environment()
+
 mesh = build_world_mesh(
     dp=DataParallelConfig(name=DataParallelType.hsdp, shard_degree=2, num_replicas=2)
 )
@@ -24,4 +26,4 @@ fully_shard(model, mesh=mesh)
 model.to_empty(device=device)
 nn.init.trunc_normal_(model.weight, mean=0.0, std=0.02, a=-0.06, b=0.06, generator=generator)
 
-print(get_rank(), model.weight)
+print(f"rank {get_rank()}:\n{model.weight}")

@@ -24,4 +24,4 @@ fully_shard(model, mesh=mesh)
 model.to_empty(device=device)
 nn.init.trunc_normal_(model.weight, mean=0.0, std=0.02, a=-0.06, b=0.06, generator=generator)
 
-print(model)
+print(get_rank(), model.weight)

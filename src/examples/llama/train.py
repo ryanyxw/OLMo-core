@@ -20,7 +20,7 @@ from olmo_core.data import (
 )
 from olmo_core.distributed.parallel import DataParallelType
 from olmo_core.nn.transformer import TransformerConfig
-from olmo_core.optim import AdamWConfig, CosWithWarmup, OptimGroupOverride
+from olmo_core.optim import CosWithWarmup, OptimGroupOverride, SkipStepAdamWConfig
 from olmo_core.train import (
     Duration,
     TrainerConfig,
@@ -100,11 +100,12 @@ def build_config(run_name: str, overrides: List[str]) -> ExperimentConfig:
     train_module_config = TransformerTrainModuleConfig(
         rank_microbatch_size=16 * SEQUENCE_LENGTH,
         max_sequence_length=dataset_config.effective_sequence_length,
-        optim=AdamWConfig(
+        optim=SkipStepAdamWConfig(
             lr=1e-3,
             group_overrides=[
                 OptimGroupOverride(params=["embeddings.weight"], opts=dict(weight_decay=0.0))
             ],
+            foreach=True,
         ),
         compile_model=True,
         dp_config=TransformerDataParallelConfig(

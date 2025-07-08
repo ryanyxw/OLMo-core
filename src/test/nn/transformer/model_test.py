@@ -237,7 +237,7 @@ def run_init_with_hsdp():
     config = get_transformer_config("olmo2")
     model = config.build(init_device="meta")
     model.apply_fsdp(mesh)
-    model.init_weights(max_seq_len=512)
+    model.init_weights(max_seq_len=512, device=get_default_device())
 
     # Check that params across all replica groups are exactly the same.
     for name, param in model.named_parameters():

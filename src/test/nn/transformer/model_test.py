@@ -258,6 +258,7 @@ def test_init_with_hsdp():
 
     run_distributed_test(
         run_init_with_hsdp,
+        backend="nccl",
         start_method="spawn",
         world_size=4,
     )

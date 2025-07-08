@@ -243,7 +243,7 @@ def run_init_with_hsdp():
     for name, param in model.named_parameters():
         full_param = get_full_tensor(param).detach()
         full_param_avg = full_param / 4
-        full_param_avg = dist.reduce(full_param)
+        dist.all_reduce(full_param_avg)
         torch.testing.assert_close(
             full_param_avg,
             full_param,

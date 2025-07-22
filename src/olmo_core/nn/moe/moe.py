@@ -150,6 +150,8 @@ class MoEBase(nn.Module):
                 lb_loss_weight = lb_loss_weight / n_layers
             if z_loss_weight is not None:
                 z_loss_weight = z_loss_weight / n_layers
+            if kl_lb_loss_weight is not None:
+                kl_lb_loss_weight = kl_lb_loss_weight / n_layers
 
         self.router = router.build(
             d_model,

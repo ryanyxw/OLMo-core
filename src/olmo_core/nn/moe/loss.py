@@ -31,17 +31,24 @@ def kl_load_balancing_loss(
     *,
     num_experts: int,
     expert_scores: torch.Tensor,
+    loss_div_factor: Optional[Union[torch.Tensor, float]] = None,
     tp_mesh: Optional[dist.DeviceMesh] = None,
     cp_mesh: Optional[dist.DeviceMesh] = None,
 ) -> torch.Tensor:
     assert tp_mesh is None  # TODO
     assert cp_mesh is None  # TODO
     assert expert_scores.shape[-1] == num_experts
-    # shape: (B, N)
+    seq_len = expert_scores.shape[1]
+    # shape: (B, S, N) -> (B, N)
     scores_fraction = expert_scores.mean(dim=1)
     # shape: (B,)
     loss = math.log(num_experts) + (scores_fraction * scores_fraction.log()).sum(dim=-1)
-    return loss.mean()
+    if loss_div_factor is None:
+        return loss.mean()
+    else:
+        # loss_div_factor represents the total number of tokens in the local batch.
+        # We want total number of instances in the batch, so we divide it by the sequence length.
+        return loss.sum() / (loss_div_factor / seq_len)
 
 
 def load_balancing_loss(

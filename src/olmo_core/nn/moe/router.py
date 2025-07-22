@@ -548,6 +548,7 @@ class MoERouter(nn.Module):
                     kl_lb_loss = kl_load_balancing_loss(
                         num_experts=self.num_experts,
                         expert_scores=scores,
+                        loss_div_factor=loss_div_factor,
                         tp_mesh=self.tp_mesh,
                         cp_mesh=self.cp_mesh,
                     )

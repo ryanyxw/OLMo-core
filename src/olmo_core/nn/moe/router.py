@@ -24,7 +24,12 @@ from olmo_core.distributed.utils import (
 from olmo_core.exceptions import OLMoConfigurationError
 from olmo_core.utils import get_default_device
 
-from .loss import MoELoadBalancingLossGranularity, load_balancing_loss, router_z_loss
+from .loss import (
+    MoELoadBalancingLossGranularity,
+    kl_load_balancing_loss,
+    load_balancing_loss,
+    router_z_loss,
+)
 
 if TYPE_CHECKING:
     from olmo_core.train.common import ReduceType
@@ -115,6 +120,7 @@ class MoERouterConfig(Config):
         lb_loss_weight: Optional[float] = None,
         lb_loss_granularity: MoELoadBalancingLossGranularity = MoELoadBalancingLossGranularity.local_batch,
         z_loss_weight: Optional[float] = None,
+        kl_lb_loss_weight: Optional[float] = None,
         dtype: Optional[torch.dtype] = None,
         init_device: str = "cpu",
     ) -> "MoERouter":
@@ -133,6 +139,7 @@ class MoERouterConfig(Config):
             init_device=init_device,
             lb_loss_weight=lb_loss_weight,
             lb_loss_granularity=lb_loss_granularity,
+            kl_lb_loss_weight=kl_lb_loss_weight,
             z_loss_weight=z_loss_weight,
         )
         if self.dtype is not None:
@@ -181,6 +188,7 @@ class MoERouter(nn.Module):
         lb_loss_weight: Optional[float] = None,
         lb_loss_granularity: MoELoadBalancingLossGranularity = MoELoadBalancingLossGranularity.local_batch,
         z_loss_weight: Optional[float] = None,
+        kl_lb_loss_weight: Optional[float] = None,
         init_device: str = "cpu",
     ):
         super().__init__()
@@ -195,6 +203,7 @@ class MoERouter(nn.Module):
         self.lb_loss_weight = lb_loss_weight
         self.lb_loss_granularity = lb_loss_granularity
         self.z_loss_weight = z_loss_weight
+        self.kl_lb_loss_weight = kl_lb_loss_weight
         self.group: Optional[dist.ProcessGroup] = None
         self.cp_mesh: Optional[dist.DeviceMesh] = None
         self.tp_mesh: Optional[dist.DeviceMesh] = None
@@ -214,6 +223,7 @@ class MoERouter(nn.Module):
         self._score_bias_batch_size_per_expert: Optional[_HiddenTensor] = None
         self._load_balancing_loss: Optional[_HiddenTensor] = None
         self._z_loss: Optional[_HiddenTensor] = None
+        self._kl_load_balancing_loss: Optional[_HiddenTensor] = None
 
     def reset_parameters(self):
         self._batch_size_per_expert = hide_from_torch(
@@ -298,6 +308,23 @@ class MoERouter(nn.Module):
     @z_loss.setter
     def z_loss(self, value: torch.Tensor):
         self._z_loss = hide_from_torch(value)
+
+    @property
+    def kl_load_balancing_loss(self) -> Optional[torch.Tensor]:
+        if self.kl_lb_loss_weight is not None:
+            if self._kl_load_balancing_loss is None:
+                self._kl_load_balancing_loss = hide_from_torch(torch.zeros([], device=self.device))
+            elif self._kl_load_balancing_loss.device != self.device:
+                self._kl_load_balancing_loss = self._kl_load_balancing_loss.to(self.device)
+        return (
+            None
+            if self._kl_load_balancing_loss is None
+            else unhide_from_torch(self._kl_load_balancing_loss)
+        )
+
+    @kl_load_balancing_loss.setter
+    def kl_load_balancing_loss(self, value: torch.Tensor):
+        self._kl_load_balancing_loss = hide_from_torch(value)
 
     @torch.no_grad()
     def post_batch(self, dry_run: bool = False):
@@ -399,6 +426,18 @@ class MoERouter(nn.Module):
             out["router Z loss"] = (self.z_loss_weight * self.z_loss, ReduceType.mean)
             out["router Z loss unscaled"] = (self.z_loss.clone(), ReduceType.mean)
 
+        # Router KL-divergence (from uniform) loss.
+        if self.kl_lb_loss_weight is not None:
+            assert self.kl_load_balancing_loss is not None
+            out["KL load balancing loss"] = (
+                self.kl_lb_loss_weight * self.kl_load_balancing_loss,
+                ReduceType.mean,
+            )
+            out["KL load balancing loss unscaled"] = (
+                self.kl_load_balancing_loss.clone(),
+                ReduceType.mean,
+            )
+
         if reset:
             self.reset_metrics()
 
@@ -466,12 +505,12 @@ class MoERouter(nn.Module):
         aux_loss: Optional[torch.Tensor] = None
         if self.training and torch.is_grad_enabled():
             with torch.autocast(enabled=False, device_type=x.device.type):
+                # Make sure scores are normalized, otherwise load balancing loss doesn't work well.
+                if self.gating_function == MoERouterGatingFunction.sigmoid:
+                    scores = scores / scores.sum(dim=-1, keepdim=True)
+
                 if self.lb_loss_weight is not None:
                     assert self.load_balancing_loss is not None
-
-                    # Make sure scores are normalized, otherwise load balancing loss doesn't work well.
-                    if self.gating_function == MoERouterGatingFunction.sigmoid:
-                        scores = scores / scores.sum(dim=-1, keepdim=True)
 
                     lb_loss = load_balancing_loss(
                         num_experts=self.num_experts,
@@ -502,6 +541,22 @@ class MoERouter(nn.Module):
 
                     scaled_z_loss = self.z_loss_weight * z_loss
                     aux_loss = scaled_z_loss if aux_loss is None else aux_loss + scaled_z_loss
+
+                if self.kl_lb_loss_weight is not None:
+                    assert self.kl_load_balancing_loss is not None
+
+                    kl_lb_loss = kl_load_balancing_loss(
+                        num_experts=self.num_experts,
+                        expert_scores=scores,
+                        tp_mesh=self.tp_mesh,
+                        cp_mesh=self.cp_mesh,
+                    )
+                    self.kl_load_balancing_loss += kl_lb_loss.detach()
+
+                    scaled_kl_lb_loss = self.kl_lb_loss_weight * kl_lb_loss
+                    aux_loss = (
+                        scaled_kl_lb_loss if aux_loss is None else aux_loss + scaled_kl_lb_loss
+                    )
 
             self.batch_size_per_expert += batch_size_per_expert
             if self.bias_gamma is not None:

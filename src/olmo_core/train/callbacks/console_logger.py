@@ -36,6 +36,7 @@ class ConsoleLoggerCallback(Callback):
             "train/PPL",
             "train/Z loss",
             "train/load balancing loss",
+            "train/KL load balancing loss",
             "train/router Z loss",
             "train/block */load imbalance",
             "system/*",

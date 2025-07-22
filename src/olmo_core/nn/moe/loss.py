@@ -1,3 +1,4 @@
+import math
 from typing import Optional, Union
 
 import torch
@@ -24,6 +25,23 @@ class MoELoadBalancingLossGranularity(StrEnum):
     """
     The loss is computed over each instance, taking into account any parallelism strategies used.
     """
+
+
+def kl_load_balancing_loss(
+    *,
+    num_experts: int,
+    expert_scores: torch.Tensor,
+    tp_mesh: Optional[dist.DeviceMesh] = None,
+    cp_mesh: Optional[dist.DeviceMesh] = None,
+) -> torch.Tensor:
+    assert tp_mesh is None  # TODO
+    assert cp_mesh is None  # TODO
+    assert expert_scores.shape[-1] == num_experts
+    # shape: (B, N)
+    scores_fraction = expert_scores.mean(dim=1)
+    # shape: (B,)
+    loss = math.log(num_experts) + (scores_fraction * scores_fraction.log()).sum(dim=-1)
+    return loss.mean()
 
 
 def load_balancing_loss(

@@ -70,6 +70,7 @@ class MoEConfig(Config):
         MoELoadBalancingLossGranularity.local_batch
     )
     z_loss_weight: Optional[float] = None
+    kl_lb_loss_weight: Optional[float] = None
     scale_loss_by_num_layers: bool = True
     dtype: DType = DType.float32
 
@@ -136,6 +137,7 @@ class MoEBase(nn.Module):
         lb_loss_weight: Optional[float] = None,
         lb_loss_granularity: MoELoadBalancingLossGranularity = MoELoadBalancingLossGranularity.local_batch,
         z_loss_weight: Optional[float] = None,
+        kl_lb_loss_weight: Optional[float] = None,
         n_layers: int = 1,
         scale_loss_by_num_layers: bool = True,
         dtype: torch.dtype = torch.float32,
@@ -155,6 +157,7 @@ class MoEBase(nn.Module):
             lb_loss_weight=lb_loss_weight,
             lb_loss_granularity=lb_loss_granularity,
             z_loss_weight=z_loss_weight,
+            kl_lb_loss_weight=kl_lb_loss_weight,
             dtype=dtype,
             init_device=init_device,
         )

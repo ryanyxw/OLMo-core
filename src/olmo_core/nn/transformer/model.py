@@ -227,18 +227,11 @@ class Transformer(nn.Module):
             if att.use_flex_attn:
                 # Reuse block masks across layers with the same configuration
                 window_size = getattr(att, "window_size", None)
-                # Determine number of sink tokens if attention sinks are used
+                # For learnable sinks, we don't use positional sink masking
+                # since the learnable parameters handle the sink behavior
+                # Only use positional sink masking for pure positional sinks (not learnable)
                 sink_tokens = None
-                if (hasattr(att, 'use_sinks') and att.use_sinks and 
-                    hasattr(att, 'sinks') and att.sinks is not None):
-                    # For attention sinks, we use a fixed number of sink tokens
-                    # (first few tokens in sequence)
-                    # The actual sink parameters are used differently in attention computation
-                    if att.sinks.ndim == 1:
-                        sink_tokens = att.sinks.numel()
-                    elif att.sinks.ndim == 2:
-                        sink_tokens = att.sinks.size(1)
-
+                
                 mask_key = (window_size, sink_tokens)
                 if mask_key not in block_masks_by_key:
                     block_masks_by_key[mask_key] = get_flex_attn_causal_block_mask(

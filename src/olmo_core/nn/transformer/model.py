@@ -217,7 +217,7 @@ class Transformer(nn.Module):
         if device is None:
             device = self.device
 
-        block_masks_by_window_size = {}
+        block_masks_by_key = {}
         block_masks = []
         for block in self.blocks.values():
             block = cast(TransformerBlock, block)
@@ -225,14 +225,27 @@ class Transformer(nn.Module):
 
             block_mask = None
             if att.use_flex_attn:
-                # Reuse block masks across layers with the same window size
+                # Reuse block masks across layers with the same configuration
                 window_size = getattr(att, "window_size", None)
-                if window_size not in block_masks_by_window_size:
-                    block_masks_by_window_size[window_size] = get_flex_attn_causal_block_mask(
-                        seq_len, device, window_size, doc_lens
+                # Determine number of sink tokens if attention sinks are used
+                sink_tokens = None
+                if (hasattr(att, 'use_sinks') and att.use_sinks and 
+                    hasattr(att, 'sinks') and att.sinks is not None):
+                    # For attention sinks, we use a fixed number of sink tokens
+                    # (first few tokens in sequence)
+                    # The actual sink parameters are used differently in attention computation
+                    if att.sinks.ndim == 1:
+                        sink_tokens = att.sinks.numel()
+                    elif att.sinks.ndim == 2:
+                        sink_tokens = att.sinks.size(1)
+
+                mask_key = (window_size, sink_tokens)
+                if mask_key not in block_masks_by_key:
+                    block_masks_by_key[mask_key] = get_flex_attn_causal_block_mask(
+                        seq_len, device, window_size, doc_lens, sink_tokens=sink_tokens
                     )
 
-                block_mask = block_masks_by_window_size[window_size]
+                block_mask = block_masks_by_key[mask_key]
 
             block_masks.append(block_mask)
 

@@ -157,6 +157,7 @@ class AttentionConfig(Config):
     dropout: Optional[float] = None
     use_flash: Optional[bool] = None
     use_flex_attn: Optional[bool] = None
+    use_sinks: Optional[bool] = None
     dtype: DType = DType.float32
     sliding_window: Optional[SlidingWindowAttentionConfig] = None
     use_head_qk_norm: Optional[bool] = None
@@ -325,6 +326,7 @@ class Attention(AttentionBase):
         dropout: float = 0.0,
         use_flash: bool = False,
         use_flex_attn: bool = False,
+        use_sinks: Optional[bool] = None,
         window_size: Optional[int] = None,
         dtype: torch.dtype = torch.float32,
         init_device: str = "cpu",
@@ -373,7 +375,11 @@ class Attention(AttentionBase):
 
         self.use_flash = use_flash
         self.use_flex_attn = use_flex_attn
-
+        self.use_sinks = use_sinks
+        if use_sinks is not None and use_sinks:
+            self.sinks = nn.Parameter(torch.empty(self.n_heads, dtype=dtype, device=init_device))
+        else:
+            self.sinks = None
         # Translate window size so that we only look left, not right.
         if window_size is not None:
             if not use_flash and not use_flex_attn:
@@ -440,6 +446,11 @@ class Attention(AttentionBase):
                 window_size=self.window_size,
             )
         elif self.use_flash:
+            if self.use_sinks:
+                raise OLMoConfigurationError(
+                    "Attention sinks with flash attention is not supported. "
+                    "Use use_flex_attn=True for attention sink functionality."
+                )
             att = dispatch_flash_attn(
                 q,
                 k,
@@ -517,6 +528,12 @@ class Attention(AttentionBase):
             ):
                 raise RuntimeError(
                     f"{self.__class__.__name__} requires flash-attn (use_flash=True) for intra-document masking"
+                )
+
+            if self.use_sinks:
+                raise OLMoConfigurationError(
+                    "Attention sinks with regular SDPA is not supported. "
+                    "Use use_flex_attn=True for attention sink functionality."
                 )
 
             # NOTE: PyTorch's SDPA doesn't support GQA, so we have to do this.
@@ -1010,6 +1027,7 @@ def _get_flex_attn_mask_mod(
     window_size: Optional[Tuple[int, int]] = None,
     doc_lens: Optional[Tuple[int, ...]] = None,
     device: Optional[torch.device] = None,
+    sink_tokens: Optional[int] = None,
 ) -> Callable[[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]:
     mask_mods = []
 
@@ -1047,6 +1065,20 @@ def _get_flex_attn_mask_mod(
 
         mask_mods.append(_document_masking_mask_mod)
 
+    if sink_tokens is not None and sink_tokens > 0:
+        
+        def _attention_sink_mask_mod(
+            B: torch.Tensor, H: torch.Tensor, q_idx: torch.Tensor, kv_idx: torch.Tensor
+        ) -> torch.Tensor:
+            # Allow attention to the first `sink_tokens` positions from any query position
+            return torch.logical_or(
+                kv_idx < sink_tokens,  # Always attend to sink tokens
+                q_idx >= kv_idx        # Standard causal masking for non-sink tokens
+            )
+        
+        # Replace causal mask with sink-aware causal mask
+        mask_mods[0] = _attention_sink_mask_mod
+
     return and_masks(*mask_mods)
 
 
@@ -1056,6 +1088,7 @@ def _get_flex_attn_causal_block_mask(
     window_size: Optional[Tuple[int, int]] = None,
     doc_lens: Optional[Tuple[int, ...]] = None,
     block_size: int = 128,
+    sink_tokens: Optional[int] = None,
 ) -> BlockMask:
     if doc_lens is not None:
         token_count = int(sum(doc_lens))
@@ -1064,7 +1097,7 @@ def _get_flex_attn_causal_block_mask(
 
         # For intra-document masking, we merge the batch size dimension into the sequence dimension.
         return create_block_mask(
-            _get_flex_attn_mask_mod(window_size, doc_lens=doc_lens, device=device),
+            _get_flex_attn_mask_mod(window_size, doc_lens=doc_lens, device=device, sink_tokens=sink_tokens),
             B=1,
             H=None,
             Q_LEN=token_count,
@@ -1075,7 +1108,7 @@ def _get_flex_attn_causal_block_mask(
 
     else:
         return create_block_mask(
-            _get_flex_attn_mask_mod(window_size, device=device),
+            _get_flex_attn_mask_mod(window_size, device=device, sink_tokens=sink_tokens),
             B=None,
             H=None,
             Q_LEN=seq_len,
@@ -1091,13 +1124,14 @@ def get_flex_attn_causal_block_mask(
     window_size: Optional[Tuple[int, int]] = None,
     doc_lens: Optional[torch.Tensor] = None,
     block_size: int = 128,
+    sink_tokens: Optional[int] = None,
 ) -> BlockMask:
     if doc_lens is not None:
         doc_lens_list = tuple(doc_lens.flatten().tolist())
         return _get_flex_attn_causal_block_mask(
-            seq_len, device, window_size, doc_lens_list, block_size
+            seq_len, device, window_size, doc_lens_list, block_size, sink_tokens
         )
 
     return _get_flex_attn_causal_block_mask(
-        seq_len, device, window_size, doc_lens=None, block_size=block_size
+        seq_len, device, window_size, doc_lens=None, block_size=block_size, sink_tokens=sink_tokens
     )

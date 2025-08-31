@@ -47,8 +47,8 @@ class BeakerCallback(Callback):
     The directory of the Beaker results dataset where the config and other data will be saved.
     """
 
-    _client = dataclasses.field(default=None, repr=False)
-    _url = dataclasses.field(default=None, repr=False)
+    _client: Any = dataclasses.field(default=None, repr=False)
+    _url: Optional[str] = dataclasses.field(default=None, repr=False)
     _last_update: Optional[float] = dataclasses.field(default=None, repr=False)
     _tps_avg: Optional[float] = dataclasses.field(default=None, repr=False)
 

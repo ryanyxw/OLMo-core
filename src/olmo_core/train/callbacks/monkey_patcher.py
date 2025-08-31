@@ -18,6 +18,9 @@ class MonkeyPatcherCallback(Callback):
     the sub-meshes.
     """
 
+    enabled: bool = True
+
     def pre_train(self):
-        # Cache DeviceMesh.__get_item__
-        DeviceMesh.__getitem__ = functools.lru_cache(maxsize=None)(DeviceMesh.__getitem__)
+        if self.enabled:
+            # Cache DeviceMesh.__get_item__
+            DeviceMesh.__getitem__ = functools.lru_cache(maxsize=None)(DeviceMesh.__getitem__)

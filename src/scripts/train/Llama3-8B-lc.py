@@ -8,6 +8,7 @@ from olmo_core.config import DType
 from olmo_core.distributed.parallel import DataParallelType
 from olmo_core.float8 import Float8Config
 from olmo_core.internal.experiment import CommonComponents, main
+from olmo_core.nn.attention import RingAttentionLoadBalancerType
 from olmo_core.nn.transformer import TransformerConfig
 from olmo_core.optim import AdamWConfig, CosWithWarmup
 from olmo_core.train import TrainerConfig
@@ -44,7 +45,9 @@ def build_train_module_config(common: CommonComponents) -> TransformerTrainModul
         dp_config=TransformerDataParallelConfig(
             name=DataParallelType.hsdp, param_dtype=DType.bfloat16, reduce_dtype=DType.float32
         ),
-        cp_config=TransformerContextParallelConfig(degree=8, head_stride=2),
+        cp_config=TransformerContextParallelConfig(
+            degree=8, head_stride=4, load_balancer=RingAttentionLoadBalancerType.llama3
+        ),
         float8_config=Float8Config(enabled=False),
         z_loss_multiplier=1e-5,
         max_grad_norm=1.0,
@@ -99,5 +102,6 @@ if __name__ == "__main__":
         model_config_builder=build_model_config,
         train_module_config_builder=build_train_module_config,
         trainer_config_builder=build_trainer_config,
+        intra_document_masking=True,
         include_default_evals=False,
     )

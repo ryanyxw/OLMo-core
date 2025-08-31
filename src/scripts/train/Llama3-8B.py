@@ -82,7 +82,7 @@ def build_trainer_config(common: CommonComponents) -> TrainerConfig:
                 cancel_check_interval=10,
             ),
         )
-        .with_callback("monkey_patcher", MonkeyPatcherCallback())
+        .with_callback("monkey_patcher", MonkeyPatcherCallback(enabled=False))
     )
 
 

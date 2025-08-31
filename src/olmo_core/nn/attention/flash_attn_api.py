@@ -6,6 +6,8 @@ import torch.distributed as dist
 
 from .ring import RingAttentionLoadBalancerType
 
+log = logging.getLogger(__name__)
+
 try:
     import flash_attn  # type: ignore
 except ImportError:
@@ -13,10 +15,9 @@ except ImportError:
 
 try:
     import ring_flash_attn  # type: ignore
-except ImportError:
+except ImportError as e:
     ring_flash_attn = None
-
-log = logging.getLogger(__name__)
+    log.exception("Failed to import ring_flash_attn", exc_info=e)
 
 
 def _flatten_batch_dim(x: torch.Tensor) -> torch.Tensor:

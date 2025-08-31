@@ -191,6 +191,7 @@ def build_launch_config(
             #  "pip install --upgrade beaker-py",
             # Quickly try a new version of PyTorch like this
             #  "pip install torch==2.7.1 --index-url https://download.pytorch.org/whl/cu128",
+            "pip install --upgrade 'ring-flash-attn @ git+https://git@github.com/zhuzilin/ring-flash-attention.git@main'",
             "pip freeze",
             # Move AWS credentials from env to relevant files
             "mkdir -p ~/.aws",

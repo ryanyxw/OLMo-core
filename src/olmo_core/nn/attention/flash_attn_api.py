@@ -17,7 +17,8 @@ try:
     import ring_flash_attn  # type: ignore
 except ImportError as e:
     ring_flash_attn = None
-    log.exception("Failed to import ring_flash_attn", exc_info=e)
+    if flash_attn is not None:
+        log.exception("Failed to import ring_flash_attn", exc_info=e)
 
 
 def _flatten_batch_dim(x: torch.Tensor) -> torch.Tensor:

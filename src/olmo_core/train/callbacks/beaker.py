@@ -1,3 +1,4 @@
+import dataclasses
 import json
 import logging
 import os
@@ -46,9 +47,10 @@ class BeakerCallback(Callback):
     The directory of the Beaker results dataset where the config and other data will be saved.
     """
 
-    _client = None
-    _url = None
-    _last_update: Optional[float] = None
+    _client = dataclasses.field(default=None, repr=False)
+    _url = dataclasses.field(default=None, repr=False)
+    _last_update: Optional[float] = dataclasses.field(default=None, repr=False)
+    _tps_avg: Optional[float] = dataclasses.field(default=None, repr=False)
 
     @property
     def client(self) -> "Beaker":
@@ -137,13 +139,20 @@ class BeakerCallback(Callback):
         )
         self._last_update = time.monotonic()
 
+    def log_metrics(self, step: int, metrics: Dict[str, float]):
+        del step
+        self._tps_avg = metrics.get("throughput/device/TPS (actual avg)")
+
     def _set_description(self, progress: TrainingProgress):
         from beaker import BeakerError, HTTPError
         from requests.exceptions import RequestException
 
         assert self.experiment_id is not None
 
-        description = f"[{progress}] "
+        if self._tps_avg is not None:
+            description = f"[{progress}, {int(self._tps_avg):,d} TPS] "
+        else:
+            description = f"[{progress}] "
 
         if self.description is not None:
             description = f"{description}{self.description}\n"

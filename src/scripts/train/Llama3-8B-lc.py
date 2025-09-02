@@ -102,6 +102,6 @@ if __name__ == "__main__":
         model_config_builder=build_model_config,
         train_module_config_builder=build_train_module_config,
         trainer_config_builder=build_trainer_config,
-        intra_document_masking=True,
+        intra_document_masking=False,
         include_default_evals=False,
     )

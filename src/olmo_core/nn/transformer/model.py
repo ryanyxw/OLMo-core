@@ -358,7 +358,7 @@ class Transformer(nn.Module):
             # HACK: The Llama3-style context parallelism only works for varlen attention, so
             # we inject document lengths that treat the whole sequence as a single document.
             max_doc_len = S
-            doc_lens = torch.zeros(B, 1, dtype=torch.int32, device=input_ids.device)
+            doc_lens = torch.zeros(B, 1, dtype=torch.int32, device="cpu")
             doc_lens[:] = S
             cu_doc_lens = get_cumulative_document_lengths(doc_lens)
 

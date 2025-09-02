@@ -139,6 +139,7 @@ class Transformer(nn.Module):
         self._precompute_float8_dynamic_scale_for_fsdp = False
         self._compile_enabled = False
         self._device: Optional[torch.device] = None
+        self._cp_load_balancer_type: Optional[RingAttentionLoadBalancerType] = None
         self._cp_load_balancer: Optional[RingAttentionLoadBalancer] = None
         self._tp_enabled = False
         self._tp_mesh: Optional[DeviceMesh] = None
@@ -352,6 +353,13 @@ class Transformer(nn.Module):
             max_doc_lens := kwargs.pop("max_doc_lens", None)
         ) is not None:
             max_doc_len = max(max_doc_lens)
+            cu_doc_lens = get_cumulative_document_lengths(doc_lens)
+        elif self._cp_load_balancer_type == RingAttentionLoadBalancerType.llama3:
+            # HACK: The Llama3-style context parallelism only works for varlen attention, so
+            # we inject document lengths that treat the whole sequence as a single document.
+            max_doc_len = S
+            doc_lens = torch.zeros(B, 1, dtype=torch.int32, device=input_ids.device)
+            doc_lens[:] = S
             cu_doc_lens = get_cumulative_document_lengths(doc_lens)
 
         # Shard inputs and RoPE buffers on sequence dimension if using context parallelism.
@@ -596,6 +604,7 @@ class Transformer(nn.Module):
         :param cp_mesh: The CP device mesh.
         :param load_balancer: The load balancing method.
         """
+        self._cp_load_balancer_type = load_balancer
         self._cp_load_balancer = load_balancer.build(cp_mesh)
         for block in self.blocks.values():
             cast(TransformerBlockBase, block).apply_cp(

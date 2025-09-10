@@ -181,7 +181,7 @@ jobs:
           spec: |
             version: v2
             description: OLMo-core ${{ matrix.task.name }}
-            budget: ai2/oe-training
+            budget: ai2/oe-base
             tasks:
               - name: tests
                 image:

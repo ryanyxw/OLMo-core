@@ -1253,6 +1253,7 @@ class NumpyPackedFSLDataset(NumpyFSLDatasetBase):
     def _pack_documents_from_source_into_instances(
         self, *source_paths: PathOrStr
     ) -> Tuple[int, int]:
+        log.info(f"Pool worker: Packing documents from {source_paths} into instances...")
         document_indices_path = self._get_document_indices_path(*source_paths)
         instance_offsets_path = self._get_instance_offsets_path(*source_paths)
         docs_by_instance_path = self._get_docs_by_instance_path(*source_paths)

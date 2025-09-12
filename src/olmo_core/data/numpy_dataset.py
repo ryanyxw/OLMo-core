@@ -1313,6 +1313,7 @@ class NumpyPackedFSLDataset(NumpyFSLDatasetBase):
             max_workers = process_cpu_count // 16 if process_cpu_count is not None else 1
             log.info(f"Packing {len(sources_needed)} sources into instances")
             with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+                log.info(f"Submitting {len(sources_needed)} tasks to executor...")
                 futures = []
                 for source_paths in sources_needed:
                     log.info(f"Packing documents from {source_paths} into instances...")
@@ -1322,7 +1323,7 @@ class NumpyPackedFSLDataset(NumpyFSLDatasetBase):
                         *source_paths,
                     )
                     futures.append(future)
-
+                log.info(f"Waiting for {len(futures)} tasks to complete...")
                 concurrent.futures.wait(futures, return_when="FIRST_EXCEPTION")
 
                 # Log results.

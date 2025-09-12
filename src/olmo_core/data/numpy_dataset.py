@@ -1302,12 +1302,16 @@ class NumpyPackedFSLDataset(NumpyFSLDatasetBase):
                 log.info(f"Reusing cached packing results for {source_paths}")
             elif source_paths not in sources_needed:
                 sources_needed.append(source_paths)
+                log.info(f"Adding '{source_paths}' to sources needed for packing...")
+
+        log.info(f"Sources needed: {len(sources_needed)}")
 
         if sources_needed:
-            max_workers = (os.process_cpu_count() or 16) // 16
-            log.info(
-                f"Packing {len(sources_needed)} sources into instances with {max_workers} workers..."
-            )
+            log.info("Packing sources into instances...")
+            process_cpu_count = os.process_cpu_count()
+            log.info(f"Process CPU count: {process_cpu_count}")
+            max_workers = process_cpu_count // 16 if process_cpu_count is not None else 1
+            log.info(f"Packing {len(sources_needed)} sources into instances")
             with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
                 futures = []
                 for source_paths in sources_needed:

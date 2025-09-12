@@ -1217,11 +1217,11 @@ class NumpyPackedFSLDataset(NumpyFSLDatasetBase):
                 log.info(f"Reusing cached packing results for '{source_path}'")
             elif source_path not in paths_needed:
                 paths_needed.append(source_path)
-                log.info(f"Adding '{source_path}' to paths needed for packing...")
+                # log.info(f"Adding '{source_path}' to paths needed for packing...")
 
         if paths_needed:
             log.info("Packing sources into instances...")
-            process_cpu_count = os.cpu_count() // 8  # NOTE: os.process_cpu_count() hangs
+            process_cpu_count = os.cpu_count() // 4  # NOTE: os.process_cpu_count() hangs
             log.info(f"Process CPU count: {process_cpu_count}")
             max_workers = process_cpu_count
             log.info(f"Packing {len(paths_needed)} sources into instances")
@@ -1229,7 +1229,7 @@ class NumpyPackedFSLDataset(NumpyFSLDatasetBase):
                 log.info(f"Submitting {len(paths_needed)} tasks to executor...")
                 futures = []
                 for source_path in paths_needed:
-                    log.info(f"Packing documents from '{source_path}' into instances...")
+                    # log.info(f"Packing documents from '{source_path}' into instances...")
                     future = executor.submit(
                         run_worker_func,
                         self._pack_documents_from_source_into_instances,

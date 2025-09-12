@@ -1304,9 +1304,11 @@ class NumpyPackedFSLDataset(NumpyFSLDatasetBase):
                 sources_needed.append(source_paths)
 
         if sources_needed:
-            with concurrent.futures.ProcessPoolExecutor(
-                max_workers=os.process_cpu_count() or 16 // 16
-            ) as executor:
+            max_workers = (os.process_cpu_count() or 16) // 16
+            log.info(
+                f"Packing {len(sources_needed)} sources into instances with {max_workers} workers..."
+            )
+            with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
                 futures = []
                 for source_paths in sources_needed:
                     log.info(f"Packing documents from {source_paths} into instances...")

@@ -1308,7 +1308,7 @@ class NumpyPackedFSLDataset(NumpyFSLDatasetBase):
 
         if sources_needed:
             log.info("Packing sources into instances...")
-            process_cpu_count = os.process_cpu_count()
+            process_cpu_count = os.cpu_count()  # NOTE: os.process_cpu_count() hangs
             log.info(f"Process CPU count: {process_cpu_count}")
             max_workers = process_cpu_count // 16 if process_cpu_count is not None else 1
             log.info(f"Packing {len(sources_needed)} sources into instances")

@@ -1309,8 +1309,11 @@ class NumpyPackedFSLDataset(NumpyFSLDatasetBase):
         log.info(f"Sources needed: {len(sources_needed)}")
 
         if sources_needed:
+            # pre-compute file sizes to avoid doing it in the worker processes
             log.info("Packing sources into instances...")
-            process_cpu_count = 8  # NOTE: os.process_cpu_count() hangs
+            total_size = sum(self.file_sizes)
+            log.info(f"Total size of all files: {total_size:,} bytes")
+            process_cpu_count = 64  # NOTE: os.process_cpu_count() hangs
             log.info(f"Process CPU count: {process_cpu_count}")
             log.info(f"Packing {len(sources_needed)} sources into instances")
             with concurrent.futures.ProcessPoolExecutor(

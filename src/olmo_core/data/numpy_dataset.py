@@ -1314,7 +1314,9 @@ class NumpyPackedFSLDataset(NumpyFSLDatasetBase):
         log.info(f"Sources needed: {len(sources_needed)}")
 
         if sources_needed:
-            with concurrent.futures.ProcessPoolExecutor(max_tasks_per_child=1) as executor:
+            with concurrent.futures.ProcessPoolExecutor(
+                max_tasks_per_child=1, max_workers=16
+            ) as executor:
                 log.info(f"Submitting {len(sources_needed)} tasks to executor...")
                 futures = []
                 for source_paths in sources_needed:

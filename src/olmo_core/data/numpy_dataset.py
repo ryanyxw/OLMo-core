@@ -1254,11 +1254,14 @@ class NumpyPackedFSLDataset(NumpyFSLDatasetBase):
     def _pack_documents_from_source_into_instances(
         self, *source_paths: PathOrStr
     ) -> Tuple[int, int]:
-        log.info(f"Pool worker: Packing documents from {source_paths} into instances...")
+        print("Pool worker: document_indices_path")
         document_indices_path = self._get_document_indices_path(*source_paths)
+        print("Pool worker: instance_offsets_path")
         instance_offsets_path = self._get_instance_offsets_path(*source_paths)
+        print("Pool worker: docs_by_instance_path")
         docs_by_instance_path = self._get_docs_by_instance_path(*source_paths)
 
+        print("Pool worker: pack_documents_into_instances")
         instances, document_indices, total_tokens = pack_documents_into_instances(
             *source_paths,
             max_sequence_length=self.sequence_length,
@@ -1283,10 +1286,12 @@ class NumpyPackedFSLDataset(NumpyFSLDatasetBase):
         # shape: (num_documents,)
         docs_by_instance = np.array(documents_by_instance_list, dtype=self.indices_dtype)
 
+        print("Pool worker: write_array_to_disk")
         write_array_to_disk(document_indices, document_indices_path)
         write_array_to_disk(instance_offsets, instance_offsets_path)
         write_array_to_disk(docs_by_instance, docs_by_instance_path)
 
+        print("Pool worker: done")
         return len(instances), total_tokens
 
     def _pack_all_documents_into_instances(self):

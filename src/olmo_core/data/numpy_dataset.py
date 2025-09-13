@@ -1255,14 +1255,10 @@ class NumpyPackedFSLDataset(NumpyFSLDatasetBase):
         self, *source_paths: PathOrStr
     ) -> Tuple[int, int]:
         try:
-            print("Pool worker: document_indices_path")
             document_indices_path = self._get_document_indices_path(*source_paths)
-            print("Pool worker: instance_offsets_path")
             instance_offsets_path = self._get_instance_offsets_path(*source_paths)
-            print("Pool worker: docs_by_instance_path")
             docs_by_instance_path = self._get_docs_by_instance_path(*source_paths)
 
-            print("Pool worker: pack_documents_into_instances")
             instances, document_indices, total_tokens = pack_documents_into_instances(
                 *source_paths,
                 max_sequence_length=self.sequence_length,
@@ -1287,7 +1283,6 @@ class NumpyPackedFSLDataset(NumpyFSLDatasetBase):
             # shape: (num_documents,)
             docs_by_instance = np.array(documents_by_instance_list, dtype=self.indices_dtype)
 
-            print("Pool worker: write_array_to_disk")
             write_array_to_disk(document_indices, document_indices_path)
             write_array_to_disk(instance_offsets, instance_offsets_path)
             write_array_to_disk(docs_by_instance, docs_by_instance_path)
@@ -1298,7 +1293,6 @@ class NumpyPackedFSLDataset(NumpyFSLDatasetBase):
             print(f"Pool worker: stack trace:\n{traceback.format_exc()}")
             raise e
 
-        print("Pool worker: done")
         return len(instances), total_tokens
 
     def _pack_all_documents_into_instances(self):
@@ -1316,25 +1310,18 @@ class NumpyPackedFSLDataset(NumpyFSLDatasetBase):
                 log.info(f"Reusing cached packing results for {source_paths}")
             elif source_paths not in sources_needed:
                 sources_needed.append(source_paths)
-                # log.info(f"Adding '{source_paths}' to sources needed for packing...")
-
-        log.info(f"Sources needed: {len(sources_needed)}")
 
         if sources_needed:
-            with concurrent.futures.ProcessPoolExecutor(
-                max_tasks_per_child=1, max_workers=16
-            ) as executor:
+            with concurrent.futures.ProcessPoolExecutor() as executor:
                 log.info(f"Submitting {len(sources_needed)} tasks to executor...")
                 futures = []
                 for source_paths in sources_needed:
-                    # log.info(f"Packing documents from {source_paths} into instances...")
                     future = executor.submit(
                         run_worker_func,
                         self._pack_documents_from_source_into_instances,
                         *source_paths,
                     )
                     futures.append(future)
-                log.info(f"Waiting for {len(futures)} tasks to complete...")
                 concurrent.futures.wait(futures, return_when="FIRST_EXCEPTION")
 
                 # Log results.

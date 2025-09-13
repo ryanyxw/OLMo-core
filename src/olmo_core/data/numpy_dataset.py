@@ -1254,42 +1254,46 @@ class NumpyPackedFSLDataset(NumpyFSLDatasetBase):
     def _pack_documents_from_source_into_instances(
         self, *source_paths: PathOrStr
     ) -> Tuple[int, int]:
-        print("Pool worker: document_indices_path")
-        document_indices_path = self._get_document_indices_path(*source_paths)
-        print("Pool worker: instance_offsets_path")
-        instance_offsets_path = self._get_instance_offsets_path(*source_paths)
-        print("Pool worker: docs_by_instance_path")
-        docs_by_instance_path = self._get_docs_by_instance_path(*source_paths)
+        try:
+            print("Pool worker: document_indices_path")
+            document_indices_path = self._get_document_indices_path(*source_paths)
+            print("Pool worker: instance_offsets_path")
+            instance_offsets_path = self._get_instance_offsets_path(*source_paths)
+            print("Pool worker: docs_by_instance_path")
+            docs_by_instance_path = self._get_docs_by_instance_path(*source_paths)
 
-        print("Pool worker: pack_documents_into_instances")
-        instances, document_indices, total_tokens = pack_documents_into_instances(
-            *source_paths,
-            max_sequence_length=self.sequence_length,
-            eos_token_id=self.eos_token_id,
-            dtype=self.dtype,
-            indices_dtype=self.indices_dtype,
-            long_doc_strategy=self._long_doc_strategy,
-        )
-        document_indices = document_indices.reshape(-1)
+            print("Pool worker: pack_documents_into_instances")
+            instances, document_indices, total_tokens = pack_documents_into_instances(
+                *source_paths,
+                max_sequence_length=self.sequence_length,
+                eos_token_id=self.eos_token_id,
+                dtype=self.dtype,
+                indices_dtype=self.indices_dtype,
+                long_doc_strategy=self._long_doc_strategy,
+            )
+            document_indices = document_indices.reshape(-1)
 
-        instance_start_offset = 0
-        instance_offsets_list: List[int] = []
-        documents_by_instance_list: List[int] = []
-        for instance in instances:
-            instance_offsets_list.append(instance_start_offset)
-            instance_offsets_list.append(instance_start_offset + len(instance))
-            instance_start_offset += len(instance)
-            documents_by_instance_list.extend(instance)
+            instance_start_offset = 0
+            instance_offsets_list: List[int] = []
+            documents_by_instance_list: List[int] = []
+            for instance in instances:
+                instance_offsets_list.append(instance_start_offset)
+                instance_offsets_list.append(instance_start_offset + len(instance))
+                instance_start_offset += len(instance)
+                documents_by_instance_list.extend(instance)
 
-        # shape: (num_instances * 2,)
-        instance_offsets = np.array(instance_offsets_list, dtype=self.indices_dtype)
-        # shape: (num_documents,)
-        docs_by_instance = np.array(documents_by_instance_list, dtype=self.indices_dtype)
+            # shape: (num_instances * 2,)
+            instance_offsets = np.array(instance_offsets_list, dtype=self.indices_dtype)
+            # shape: (num_documents,)
+            docs_by_instance = np.array(documents_by_instance_list, dtype=self.indices_dtype)
 
-        print("Pool worker: write_array_to_disk")
-        write_array_to_disk(document_indices, document_indices_path)
-        write_array_to_disk(instance_offsets, instance_offsets_path)
-        write_array_to_disk(docs_by_instance, docs_by_instance_path)
+            print("Pool worker: write_array_to_disk")
+            write_array_to_disk(document_indices, document_indices_path)
+            write_array_to_disk(instance_offsets, instance_offsets_path)
+            write_array_to_disk(docs_by_instance, docs_by_instance_path)
+        except Exception as e:
+            print(f"Pool worker: error {e}")
+            raise e
 
         print("Pool worker: done")
         return len(instances), total_tokens

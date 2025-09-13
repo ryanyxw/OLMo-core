@@ -4,6 +4,7 @@ import concurrent.futures
 import hashlib
 import logging
 import math
+import multiprocessing as mp
 import os
 import random
 import tempfile
@@ -1309,11 +1310,13 @@ class NumpyPackedFSLDataset(NumpyFSLDatasetBase):
 
         if sources_needed:
             log.info("Packing sources into instances...")
-            process_cpu_count = os.cpu_count() // 8  # NOTE: os.process_cpu_count() hangs
+            process_cpu_count = 8  # NOTE: os.process_cpu_count() hangs
             log.info(f"Process CPU count: {process_cpu_count}")
             log.info(f"Packing {len(sources_needed)} sources into instances")
             with concurrent.futures.ProcessPoolExecutor(
-                max_workers=process_cpu_count, max_tasks_per_child=5
+                max_workers=process_cpu_count,
+                max_tasks_per_child=5,
+                mp_context=mp.get_context("spawn"),
             ) as executor:
                 log.info(f"Submitting {len(sources_needed)} tasks to executor...")
                 futures = []

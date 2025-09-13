@@ -1292,7 +1292,10 @@ class NumpyPackedFSLDataset(NumpyFSLDatasetBase):
             write_array_to_disk(instance_offsets, instance_offsets_path)
             write_array_to_disk(docs_by_instance, docs_by_instance_path)
         except Exception as e:
+            import traceback
+
             print(f"Pool worker: error {e}")
+            print(f"Pool worker: stack trace:\n{traceback.format_exc()}")
             raise e
 
         print("Pool worker: done")

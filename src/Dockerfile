@@ -4,7 +4,7 @@ ARG CUDA_VERSION=12.8.1
 ARG CUDA_VERSION_PATH=cu128
 ARG PYTHON_VERSION=3.11
 ARG BASE_IMAGE=ubuntu:${UBUNTU_VERSION}
-ARG DEVEL_BASE_IMAGE=nvidia/cuda:${CUDA_VERSION}-devel-ubuntu${UBUNTU_VERSION}
+ARG DEVEL_BASE_IMAGE=nvidia/cuda:${CUDA_VERSION}-cudnn-devel-ubuntu${UBUNTU_VERSION}
 
 #########################################################################
 # Build image

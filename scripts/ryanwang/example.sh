@@ -35,7 +35,7 @@ python -m olmo_core.launch.beaker \
   --env-secret WANDB_API_KEY=RYAN_WANDB_API_KEY \
 	-- src/examples/llm/train.py \
 		$runname \
-		--trainer.save_folder=/weka/oe-training-default/$USER/$runname \
+		--trainer.save_folder=/weka/oe-training-default/ryanwang/$runname \
 		--trainer.max_duration='{value: 130_000_000_000, unit: tokens}' \
 		--trainer.callbacks.wandb='{enabled: true, entity: ryanyxw, project: olmo1B, name: $runname}' \
 		--trainer.callbacks.lm_evaluator.enabled=false \

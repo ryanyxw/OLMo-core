@@ -39,6 +39,7 @@ python -m olmo_core.launch.beaker \
 		$runname \
 		--trainer.save_folder=/weka/oe-training-default/ryanwang/$runname \
 		--trainer.max_duration='{value: 130_000_000_000, unit: tokens}' \
+		--work-dir="/weka/oe-training-default/ryanwang/dataset-cache" \
 		--trainer.callbacks.wandb='{enabled: true, entity: ryanyxw, project: olmo1B, name: $runname}' \
 		--trainer.callbacks.lm_evaluator.enabled=false \
 		--trainer.callbacks.downstream_evaluator.enabled=false \

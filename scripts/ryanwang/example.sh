@@ -22,15 +22,15 @@
 runname="llama2_271M_multinode_test"
 python -m olmo_core.launch.beaker \
 	--name $runname \
-	--gpus 1 \
+	--gpus 2 \
 	--nodes 2 \
-	--host_networking True \
 	--budget ai2/oe-base \
 	--workspace ai2/flex2 \
 	--cluster ai2/jupiter \
 	--priority urgent \
 	--preemptible \
 	--allow-dirty \
+	--torchrun \
 	--weka=oe-training-default \
 	--shared-filesystem \
 	--env-secret HF_TOKEN=RYAN_HF_TOKEN \

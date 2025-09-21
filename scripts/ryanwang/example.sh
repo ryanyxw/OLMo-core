@@ -31,6 +31,7 @@ python -m olmo_core.launch.beaker \
 	--preemptible \
 	--allow-dirty \
 	--weka=oe-training-default \
+	--shared-filesystem \
 	--env-secret HF_TOKEN=RYAN_HF_TOKEN \
   --env-secret WANDB_API_KEY=RYAN_WANDB_API_KEY \
 	-- src/examples/llm/train.py \

@@ -23,11 +23,8 @@ runname="llama2_271M_multinode_test"
 python -m olmo_core.launch.beaker \
 	--name $runname \
 	--gpus 1 \
-	--replicas 2 \
-	--leader-selection \
+	--nodes 2 \
 	--host-networking \
-	--propagate-failure \
-	--propagate-preemption \
 	--budget ai2/oe-base \
 	--workspace ai2/flex2 \
 	--cluster ai2/jupiter \

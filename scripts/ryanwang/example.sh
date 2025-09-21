@@ -22,8 +22,8 @@
 runname="llama2_271M_2"
 python -m olmo_core.launch.beaker \
 	--name $runname \
-	--gpus 2 \
-	--nodes 1 \
+	--gpus 1 \
+	--nodes 2 \
 	--budget ai2/oe-base \
 	--workspace ai2/flex2 \
 	--cluster ai2/jupiter \

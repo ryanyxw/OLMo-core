@@ -15,9 +15,9 @@ from typing import List, Optional, cast
 
 import rich
 
-from float8 import Float8Config
 from nn.transformer import TransformerDataParallelWrappingStrategy
 from olmo_core.config import Config, DType
+from olmo_core.float8 import Float8Config
 from olmo_core.data import (
     NumpyDataLoaderConfig,
     NumpyDatasetConfig,

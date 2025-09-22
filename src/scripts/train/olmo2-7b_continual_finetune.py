@@ -33,6 +33,7 @@ from olmo_core.train import (
     TrainerConfig,
     prepare_training_environment,
     teardown_training_environment,
+    LoadStrategy,
 )
 from olmo_core.train.callbacks import (
     CheckpointerCallback,
@@ -207,6 +208,8 @@ def build_config(opts, overrides: List[str]) -> ExperimentConfig:
             save_overwrite=True,
             metrics_collect_interval=5,
             cancel_check_interval=5,
+            load_path="/weka/oe-training-default/ryanwang/phdbrainstorm/OLMo-core/olmo2_7b_converted/model_and_optim",
+            load_strategy=LoadStrategy.always,
         )
         .with_callback("gpu_monitor", GPUMemoryMonitorCallback())
         .with_callback(

@@ -22,12 +22,13 @@
 runname="olmo2_7B_pubmed_continual-anneal_vanilla"
 python -m olmo_core.launch.beaker \
 	--name $runname \
-	--gpus 2 \
+	--gpus 4 \
 	--nodes 1 \
 	--budget ai2/oe-base \
 	--workspace ai2/flex2 \
-	--cluster ai2/jupiter \
+	--cluster ai2/neptune \
 	--priority urgent \
+	--preemptible \
 	--torchrun \
 	--weka=oe-training-default \
 	--shared-filesystem \
@@ -41,7 +42,6 @@ python -m olmo_core.launch.beaker \
 		--work-dir="/weka/oe-training-default/ryanwang/dataset-cache" \
 		--trainer.callbacks.wandb="{enabled: true, entity: ryanyxw, project: olmo2_7B, name: ${runname}}" \
 
-#	--preemptible \
 
 
 #	--allow-dirty \

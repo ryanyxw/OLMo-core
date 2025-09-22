@@ -407,16 +407,19 @@ class TransformerTrainModule(TrainModule):
                 print("ENTER 4.11")
 
                 # Run forward pass, get losses.
-                _, loss, ce_loss, z_loss = self.model_forward(
-                    input_ids,
-                    labels=labels,
-                    ignore_index=self.label_ignore_index,
-                    loss_reduction="sum",
-                    z_loss_multiplier=self.z_loss_multiplier,
-                    loss_div_factor=batch_num_tokens_for_loss,
-                    return_logits=False,
-                    **model_kwargs,
-                )
+                try:
+                    _, loss, ce_loss, z_loss = self.model_forward(
+                        input_ids,
+                        labels=labels,
+                        ignore_index=self.label_ignore_index,
+                        loss_reduction="sum",
+                        z_loss_multiplier=self.z_loss_multiplier,
+                        loss_div_factor=batch_num_tokens_for_loss,
+                        return_logits=False,
+                        **model_kwargs,
+                    )
+                except:
+                    breakpoint()
 
                 print("ENTER 4.12")
 

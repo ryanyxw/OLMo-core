@@ -1270,6 +1270,17 @@ class Trainer:
     def _fit_epoch(self):
         self.data_loader.reshuffle(self.epoch)
 
+        for i, batch in enumerate(self.data_loader):
+            print(f"Batch {i}:")
+            print(f"  input_ids shape: {batch['input_ids'].shape}")
+            print(f"  First 10 tokens: {batch['input_ids'][0, :10].tolist()}")
+            print(f"  Min token: {batch['input_ids'].min().item()}")
+            print(f"  Max token: {batch['input_ids'].max().item()}")
+            if i >= 2:  # Only test first few batches
+                break
+        print("INSIDE")
+        breakpoint()
+
         log.info(f"Starting epoch {self.epoch}...")
 
         for callback in self._iter_callbacks():

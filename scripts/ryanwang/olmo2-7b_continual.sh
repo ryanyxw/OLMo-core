@@ -41,6 +41,7 @@ python -m olmo_core.launch.beaker \
 		--trainer.save_folder=/weka/oe-training-default/ryanwang/phdbrainstorm/models/$runname \
 		--work-dir="/weka/oe-training-default/ryanwang/dataset-cache" \
 		--trainer.callbacks.wandb='{enabled: true, entity: ryanyxw, project: olmo2_7B, name: $runname}' \
+		--trainer.hard_stop='{value: 100, unit: steps}' \
 
 
 #	--allow-dirty \

@@ -23,6 +23,7 @@ from olmo_core.data import (
     NumpyDatasetType,
     TokenizerConfig,
 )
+from olmo_core.data.types import NumpyDatasetDType
 from olmo_core.distributed.parallel import DataParallelType
 from olmo_core.distributed.utils import get_rank
 from olmo_core.nn.transformer import TransformerConfig
@@ -174,6 +175,7 @@ def build_config(opts, overrides: List[str]) -> ExperimentConfig:
         sequence_length=opts.sequence_length,
         tokenizer=tokenizer_config,
         work_dir=work_dir,
+        dtype=NumpyDatasetDType.uint32,
     )
 
     data_loader_config = NumpyDataLoaderConfig(

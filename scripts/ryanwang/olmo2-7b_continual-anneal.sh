@@ -28,7 +28,6 @@ python -m olmo_core.launch.beaker \
 	--workspace ai2/flex2 \
 	--cluster ai2/jupiter \
 	--priority urgent \
-	--preemptible \
 	--torchrun \
 	--weka=oe-training-default \
 	--shared-filesystem \
@@ -41,6 +40,8 @@ python -m olmo_core.launch.beaker \
 		--trainer.save_folder=/weka/oe-training-default/ryanwang/phdbrainstorm/models/$runname \
 		--work-dir="/weka/oe-training-default/ryanwang/dataset-cache" \
 		--trainer.callbacks.wandb="{enabled: true, entity: ryanyxw, project: olmo2_7B, name: ${runname}}" \
+
+#	--preemptible \
 
 
 #	--allow-dirty \

@@ -218,7 +218,7 @@ def build_config(opts, overrides: List[str]) -> ExperimentConfig:
             save_overwrite=True,
             metrics_collect_interval=5,
             cancel_check_interval=5,
-            load_path="weka/oe-training-default/ai2-llm/checkpoints/OLMo-medium/peteish7/step928646",
+            load_path="/weka/oe-training-default/ai2-llm/checkpoints/OLMo-medium/peteish7/step928646/train",
             load_strategy=LoadStrategy.always,
         )
         .with_callback("gpu_monitor", GPUMemoryMonitorCallback())

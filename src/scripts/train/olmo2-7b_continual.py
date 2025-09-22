@@ -142,20 +142,6 @@ def train(config: ExperimentConfig):
     # Call reshuffle to generate global indices
     data_loader.reshuffle(epoch=1)
 
-    # Check global indices
-    global_indices = data_loader.get_global_indices()
-    print(f"Global indices shape: {global_indices.shape}")
-    print(f"Global indices dtype: {global_indices.dtype}")
-    print(f"First 10 global indices: {global_indices[:10]}")
-    print(f"Min global index: {global_indices.min()}")
-    print(f"Max global index: {global_indices.max()}")
-
-    # Check if global indices are valid
-    if global_indices.max() >= len(dataset):
-        print(f"ERROR: Max global index {global_indices.max()} >= dataset length {len(dataset)}")
-    else:
-        print("Global indices look valid")
-
     # Test direct dataset access vs data loader access
     print("\n=== TESTING DIRECT DATASET ACCESS ===")
     for i in range(3):
@@ -221,7 +207,7 @@ def build_config(opts, overrides: List[str]) -> ExperimentConfig:
         sequence_length=opts.sequence_length,
         tokenizer=tokenizer_config,
         work_dir=work_dir,
-        # dtype=NumpyDatasetDType.uint32,
+        dtype=NumpyDatasetDType.uint32,
     )
 
     data_loader_config = NumpyDataLoaderConfig(

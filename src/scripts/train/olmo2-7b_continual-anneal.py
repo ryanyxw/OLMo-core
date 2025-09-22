@@ -203,7 +203,6 @@ def build_config(opts, overrides: List[str]) -> ExperimentConfig:
             param_dtype=DType.bfloat16,
             reduce_dtype=DType.float32,
             wrapping_strategy=TransformerDataParallelWrappingStrategy.blocks,
-            shard_degree=32,
         ),
         float8_config=Float8Config(enabled=False),
         z_loss_multiplier=1e-5,

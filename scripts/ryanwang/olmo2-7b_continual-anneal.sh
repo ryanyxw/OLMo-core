@@ -22,7 +22,7 @@
 runname="olmo2_7B_pubmed_continual-anneal_vanilla"
 python -m olmo_core.launch.beaker \
 	--name $runname \
-	--gpus 8 \
+	--gpus 2 \
 	--nodes 1 \
 	--budget ai2/oe-base \
 	--workspace ai2/flex2 \

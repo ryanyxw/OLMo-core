@@ -175,7 +175,7 @@ def build_config(opts, overrides: List[str]) -> ExperimentConfig:
         sequence_length=opts.sequence_length,
         tokenizer=tokenizer_config,
         work_dir=work_dir,
-        dtype=NumpyDatasetDType.uint32,
+        # dtype=NumpyDatasetDType.uint32,
     )
 
     data_loader_config = NumpyDataLoaderConfig(

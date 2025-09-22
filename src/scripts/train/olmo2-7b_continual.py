@@ -130,38 +130,6 @@ def train(config: ExperimentConfig):
     trainer = config.trainer.build(train_module, data_loader)
     # docs: end-build-components
 
-    import pdb
-    pdb.set_trace()
-
-    # Debug the reshuffle process
-    print("=== DEBUGGING DATA LOADER ===")
-    print(f"Dataset length: {len(dataset)}")
-    print(f"Dataset dtype: {dataset.dtype}")
-    print(f"Sequence length: {dataset.sequence_length}")
-
-    # Call reshuffle to generate global indices
-    data_loader.reshuffle(epoch=1)
-
-    # Test direct dataset access vs data loader access
-    print("\n=== TESTING DIRECT DATASET ACCESS ===")
-    for i in range(3):
-        item = dataset[i]
-        print(
-            f"Dataset[{i}]: {item['input_ids'][:10].tolist()}, min={item['input_ids'].min()}, max={item['input_ids'].max()}")
-
-    print("\n=== TESTING DATA LOADER ACCESS ===")
-    # Test the data loader iteration
-    for i, batch in enumerate(data_loader):
-        print(f"Batch {i}:")
-        print(f"  input_ids shape: {batch['input_ids'].shape}")
-        print(f"  First 10 tokens: {batch['input_ids'][0, :10].tolist()}")
-        print(f"  Min token: {batch['input_ids'].min().item()}")
-        print(f"  Max token: {batch['input_ids'].max().item()}")
-        if i >= 2:  # Only test first few batches
-            break
-
-    breakpoint()
-
     # Save config to W&B and each checkpoint dir.
     config_dict = config.as_config_dict()
     cast(ConfigSaverCallback, trainer.callbacks["config_saver"]).config = config_dict

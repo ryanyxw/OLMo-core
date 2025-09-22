@@ -385,22 +385,16 @@ class TransformerTrainModule(TrainModule):
                 input_ids, labels, model_kwargs = self._prepare_batch(micro_batch)
 
                 # Run forward pass, get losses.
-                try:
-                    _, loss, ce_loss, z_loss = self.model_forward(
-                        input_ids,
-                        labels=labels,
-                        ignore_index=self.label_ignore_index,
-                        loss_reduction="sum",
-                        z_loss_multiplier=self.z_loss_multiplier,
-                        loss_div_factor=batch_num_tokens_for_loss,
-                        return_logits=False,
-                        **model_kwargs,
-                    )
-                except:
-                    breakpoint()
-                breakpoint()
-
-                print("ENTER 4.12")
+                _, loss, ce_loss, z_loss = self.model_forward(
+                    input_ids,
+                    labels=labels,
+                    ignore_index=self.label_ignore_index,
+                    loss_reduction="sum",
+                    z_loss_multiplier=self.z_loss_multiplier,
+                    loss_div_factor=batch_num_tokens_for_loss,
+                    return_logits=False,
+                    **model_kwargs,
+                )
 
                 # Update total batch CE and Z loss.
                 ce_batch_loss += get_local_tensor(ce_loss.detach())

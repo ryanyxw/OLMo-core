@@ -19,11 +19,11 @@
 
 # this is training a llama2_271M (adjustable through `--model-factory`)
 
-runname="olmo2_7B_pubmed_vanilla"
+runname="olmo2_7B_pubmed_continual-anneal_vanilla"
 python -m olmo_core.launch.beaker \
 	--name $runname \
 	--gpus 8 \
-	--nodes 2 \
+	--nodes 8 \
 	--budget ai2/oe-base \
 	--workspace ai2/flex2 \
 	--cluster ai2/jupiter \
@@ -34,7 +34,7 @@ python -m olmo_core.launch.beaker \
 	--shared-filesystem \
 	--env-secret HF_TOKEN=RYAN_HF_TOKEN \
   --env-secret WANDB_API_KEY=RYAN_WANDB_API_KEY \
-	-- src/scripts/train/olmo2-7b_continual.py \
+	-- src/scripts/train/olmo2-7b_continual-anneal.py \
 		$runname \
 		--model-factory=olmo2_7B \
 		--sequence-length=4096 \

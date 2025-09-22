@@ -27,12 +27,13 @@ from olmo_core.data.types import NumpyDatasetDType
 from olmo_core.distributed.parallel import DataParallelType
 from olmo_core.distributed.utils import get_rank
 from olmo_core.nn.transformer import TransformerConfig
-from olmo_core.optim import AdamWConfig, CosWithWarmup, OptimGroupOverride, SkipStepAdamWConfig
+from olmo_core.optim import AdamWConfig, CosWithWarmup, OptimGroupOverride, SkipStepAdamWConfig, WSD, SchedulerUnits
 from olmo_core.train import (
     Duration,
     TrainerConfig,
     prepare_training_environment,
     teardown_training_environment,
+    LoadStrategy,
 )
 from olmo_core.train.callbacks import (
     CheckpointerCallback,
@@ -88,6 +89,7 @@ DATA_PATHS = [prefix.format(num=str(i).zfill(3)) for i in range(128)]
 
 GLOBAL_BATCH_SIZE = 1024
 MICRO_BATCH_SIZE = 2
+LENGTH_IN_TOKENS = int(5.709e9)
 
 # docs: start-define-config
 @dataclass
@@ -188,7 +190,7 @@ def build_config(opts, overrides: List[str]) -> ExperimentConfig:
         rank_microbatch_size=MICRO_BATCH_SIZE * opts.sequence_length,  # NOTE: this is specified in tokens, not instances
         max_sequence_length=dataset_config.effective_sequence_length,
         optim=SkipStepAdamWConfig(
-            lr=3e-4,
+            lr=6.135113558011711e-05,
             weight_decay=0.1,
             betas=(0.9, 0.95),
             group_overrides=[
@@ -197,12 +199,18 @@ def build_config(opts, overrides: List[str]) -> ExperimentConfig:
         ),
         compile_model=True,
         dp_config=TransformerDataParallelConfig(
-            name=DataParallelType.hsdp, param_dtype=DType.bfloat16, reduce_dtype=DType.float32,wrapping_strategy=TransformerDataParallelWrappingStrategy.blocks
+            name=DataParallelType.hsdp,
+            param_dtype=DType.bfloat16,
+            reduce_dtype=DType.float32,
+            wrapping_strategy=TransformerDataParallelWrappingStrategy.blocks,
+            shard_degree=32,
         ),
         float8_config=Float8Config(enabled=False),
         z_loss_multiplier=1e-5,
         max_grad_norm=1.0,
-        scheduler=CosWithWarmup(warmup_steps=100),
+        scheduler=WSD(
+            units=SchedulerUnits.tokens, warmup=0, decay=LENGTH_IN_TOKENS, decay_fraction=None
+        ),
     )
 
     trainer_config = (
@@ -211,6 +219,8 @@ def build_config(opts, overrides: List[str]) -> ExperimentConfig:
             save_overwrite=True,
             metrics_collect_interval=5,
             cancel_check_interval=5,
+            load_path="weka/oe-training-default/ai2-llm/checkpoints/OLMo-medium/peteish7/step928646/model",
+            load_strategy=LoadStrategy.always,
         )
         .with_callback("gpu_monitor", GPUMemoryMonitorCallback())
         .with_callback(

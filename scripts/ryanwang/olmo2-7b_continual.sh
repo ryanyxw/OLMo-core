@@ -20,30 +20,38 @@
 # this is training a llama2_271M (adjustable through `--model-factory`)
 
 runname="olmo2_7B_multinode_test"
-CUDA_LAUNCH_BLOCKING=1 python -m olmo_core.launch.beaker \
-	--name $runname \
-	--gpus 1 \
-	--nodes 1 \
-	--budget ai2/oe-base \
-	--workspace ai2/flex2 \
-	--cluster ai2/jupiter \
-	--priority urgent \
-	--preemptible \
-	--torchrun \
-	--weka=oe-training-default \
-	--shared-filesystem \
-	--env-secret HF_TOKEN=RYAN_HF_TOKEN \
-  --env-secret WANDB_API_KEY=RYAN_WANDB_API_KEY \
-	-- CUDA_LAUNCH_BLOCKING=1 src/scripts/train/olmo2-7b_continual.py \
-		$runname \
-		--model-factory=olmo2_190M \
-		--sequence-length=1024 \
-		--trainer.save_folder=/weka/oe-training-default/ryanwang/phdbrainstorm/models/$runname \
-		--work-dir="/weka/oe-training-default/ryanwang/dataset-cache" \
-		--trainer.callbacks.wandb='{enabled: true, entity: ryanyxw, project: olmo2_7B, name: $runname}' \
-		--trainer.hard_stop='{value: 100, unit: steps}' \
+#CUDA_LAUNCH_BLOCKING=1 python -m olmo_core.launch.beaker \
+#	--name $runname \
+#	--gpus 1 \
+#	--nodes 1 \
+#	--budget ai2/oe-base \
+#	--workspace ai2/flex2 \
+#	--cluster ai2/jupiter \
+#	--priority urgent \
+#	--preemptible \
+#	--torchrun \
+#	--weka=oe-training-default \
+#	--shared-filesystem \
+#	--env-secret HF_TOKEN=RYAN_HF_TOKEN \
+#  --env-secret WANDB_API_KEY=RYAN_WANDB_API_KEY \
+#	-- src/scripts/train/olmo2-7b_continual.py \
+#		$runname \
+#		--model-factory=olmo2_190M \
+#		--sequence-length=1024 \
+#		--trainer.save_folder=/weka/oe-training-default/ryanwang/phdbrainstorm/models/$runname \
+#		--work-dir="/weka/oe-training-default/ryanwang/dataset-cache" \
+#		--trainer.callbacks.wandb='{enabled: true, entity: ryanyxw, project: olmo2_7B, name: $runname}' \
+#		--trainer.hard_stop='{value: 100, unit: steps}' \
 
 
 #	--allow-dirty \
 #		--trainer.max_duration='{value: 130_000_000_000, unit: tokens}' \
 
+torchrun nproc-per-node=2 src/scripts/train/olmo2-7b_continual.py \
+		$runname \
+		--model-factory=olmo2_190M \
+		--sequence-length=1024 \
+		--trainer.save_folder=/root/phdbrainstorm/models/$runname \
+		--work-dir="/root/dataset-cache" \
+		--trainer.callbacks.wandb='{enabled: true, entity: ryanyxw, project: olmo2_7B, name: $runname}' \
+		--trainer.hard_stop='{value: 100, unit: steps}' \

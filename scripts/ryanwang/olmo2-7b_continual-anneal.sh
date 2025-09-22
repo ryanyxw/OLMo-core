@@ -22,12 +22,12 @@
 runname="olmo2_7B_pubmed_continual-anneal_vanilla"
 python -m olmo_core.launch.beaker \
 	--name $runname \
-	--gpus 4 \
-	--nodes 1 \
+	--gpus 8 \
+	--nodes 4 \
 	--budget ai2/oe-base \
 	--workspace ai2/flex2 \
-	--cluster ai2/neptune \
-	--priority urgent \
+	--cluster ai2/jupiter \
+	--priority high \
 	--preemptible \
 	--torchrun \
 	--weka=oe-training-default \

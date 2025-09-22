@@ -675,7 +675,7 @@ class Trainer:
         og_sigint_handler = signal.signal(signal.SIGINT, self._handle_os_signal)
 
         # Do a dry-run for compiling and catch OOMs.
-        self._dry_run_batch()
+        # self._dry_run_batch()
 
         try:
             while not self.training_complete:

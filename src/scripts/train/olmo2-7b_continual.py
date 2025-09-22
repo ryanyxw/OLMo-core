@@ -15,7 +15,6 @@ from typing import List, Optional, cast
 
 import rich
 
-from nn.transformer import TransformerDataParallelWrappingStrategy
 from olmo_core.config import Config, DType
 from olmo_core.float8 import Float8Config
 from olmo_core.data import (
@@ -27,7 +26,7 @@ from olmo_core.data import (
 from olmo_core.distributed.parallel import DataParallelType
 from olmo_core.distributed.utils import get_rank
 from olmo_core.nn.transformer import TransformerConfig
-from olmo_core.optim import AdamWConfig, CosWithWarmup, OptimGroupOverride
+from olmo_core.optim import AdamWConfig, CosWithWarmup, OptimGroupOverride, SkipStepAdamWConfig
 from olmo_core.train import (
     Duration,
     TrainerConfig,
@@ -47,9 +46,9 @@ from olmo_core.train.callbacks import (
 from olmo_core.train.train_module import (
     TransformerDataParallelConfig,
     TransformerTrainModuleConfig,
+    TransformerDataParallelWrappingStrategy,
 )
 from olmo_core.utils import seed_all
-from optim import SkipStepAdamWConfig
 
 log = logging.getLogger(__name__)
 

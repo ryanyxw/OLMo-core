@@ -27,7 +27,7 @@ python -m olmo_core.launch.beaker \
 	--budget ai2/oe-base \
 	--workspace ai2/flex2 \
 	--cluster ai2/jupiter \
-	--priority high \
+	--priority urgent \
 	--preemptible \
 	--torchrun \
 	--weka=oe-training-default \

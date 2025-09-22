@@ -184,7 +184,7 @@ def build_config(opts, overrides: List[str]) -> ExperimentConfig:
     data_loader_config = NumpyDataLoaderConfig(
         global_batch_size=GLOBAL_BATCH_SIZE * opts.sequence_length,  # NOTE: this is specified in tokens, not instances
         seed=0,
-        num_workers=16,
+        num_workers=0,
     )
 
     train_module_config = TransformerTrainModuleConfig(

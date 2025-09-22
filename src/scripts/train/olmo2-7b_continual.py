@@ -81,8 +81,8 @@ log = logging.getLogger(__name__)
 # ]
 # EVAL_DATA_PATHS = [f"{DATA_ROOT}/c4-validation.00000-00008.npy"]
 
-# prefix = "/weka/oe-training-default/ryanwang/phdbrainstorm/data/pubmed_orig/tokenized/part-{num}-00000.csv.gz"
-prefix = "/root/phdbrainstorm/data/pubmed_orig/tokenized/part-{num}-00000.npy"
+prefix = "/weka/oe-training-default/ryanwang/phdbrainstorm/data/pubmed_orig/tokenized/part-{num}-00000.csv.gz"
+# prefix = "/root/phdbrainstorm/data/pubmed_orig/tokenized/part-{num}-00000.npy"
 
 DATA_PATHS = [prefix.format(num=str(i).zfill(3)) for i in range(128)]
 

@@ -36,8 +36,8 @@ CUDA_LAUNCH_BLOCKING=1 python -m olmo_core.launch.beaker \
   --env-secret WANDB_API_KEY=RYAN_WANDB_API_KEY \
 	-- src/scripts/train/olmo2-7b_continual.py \
 		$runname \
-		--model-factory=olmo2_7B \
-		--sequence-length=4096
+		--model-factory=olmo2_190M \
+		--sequence-length=1024 \
 		--trainer.save_folder=/weka/oe-training-default/ryanwang/phdbrainstorm/models/$runname \
 		--work-dir="/weka/oe-training-default/ryanwang/dataset-cache" \
 		--trainer.callbacks.wandb='{enabled: true, entity: ryanyxw, project: olmo2_7B, name: $runname}' \

@@ -20,9 +20,9 @@
 # this is training a llama2_271M (adjustable through `--model-factory`)
 
 runname="olmo2_7B_multinode_test"
-python -m olmo_core.launch.beaker \
+CUDA_LAUNCH_BLOCKING=1 python -m olmo_core.launch.beaker \
 	--name $runname \
-	--gpus 8 \
+	--gpus 1 \
 	--nodes 1 \
 	--budget ai2/oe-base \
 	--workspace ai2/flex2 \

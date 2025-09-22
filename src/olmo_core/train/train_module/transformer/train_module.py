@@ -340,9 +340,13 @@ class TransformerTrainModule(TrainModule):
         # Set model to train mode if it isn't already.
         self._set_model_mode("train")
 
+        print("ENTER 4.1")
+
         # Generate labels.
         if "labels" not in batch:
             batch["labels"] = get_labels(batch, label_ignore_index=self.label_ignore_index)
+
+        print("ENTER 4.2")
 
         # Record how many instances are going to be skipped (masked out).
         if (instance_mask := batch.get("instance_mask")) is not None and not dry_run:
@@ -350,22 +354,36 @@ class TransformerTrainModule(TrainModule):
                 "train/masked instances (%)", (~instance_mask).float().mean(), ReduceType.mean
             )
 
+        print("ENTER 4.3")
+
         # Calculate and record how many tokens are going to be used in the loss.
         batch_num_tokens = batch["labels"].numel()
+
+        print("ENTER 4.4")
+
         batch_num_tokens_for_loss = move_to_device(
             (batch["labels"] != self.label_ignore_index).sum(), self.device
         )
+
+        print("ENTER 4.5")
+
         self.record_metric(
             "train/masked labels (%)",
             (batch_num_tokens - batch_num_tokens_for_loss) / batch_num_tokens,
             ReduceType.mean,
         )
 
+        print("ENTER 4.6")
+
         # Batch losses to record.
         ce_batch_loss = move_to_device(torch.tensor(0.0), self.device)
         z_batch_loss: Optional[torch.Tensor] = None
+        print("ENTER 4.7")
+
         if self.z_loss_multiplier is not None:
             z_batch_loss = move_to_device(torch.tensor(0.0), self.device)
+
+        print("ENTER 4.8")
 
         # Split into micro-batches.
         if self.rank_microbatch_size < (seq_len := batch["input_ids"].shape[1]):
@@ -375,10 +393,18 @@ class TransformerTrainModule(TrainModule):
         micro_batches = split_batch(batch, self.rank_microbatch_size // seq_len)
         num_micro_batches = len(micro_batches)
 
+        print("ENTER 4.9")
+
+
         # Train one micro-batch at a time.
         for micro_batch_idx, micro_batch in enumerate(micro_batches):
             with self._train_microbatch_context(micro_batch_idx, num_micro_batches):
+
+                print("ENTER 4.10")
+
                 input_ids, labels, model_kwargs = self._prepare_batch(micro_batch)
+
+                print("ENTER 4.11")
 
                 # Run forward pass, get losses.
                 _, loss, ce_loss, z_loss = self.model_forward(
@@ -391,6 +417,8 @@ class TransformerTrainModule(TrainModule):
                     return_logits=False,
                     **model_kwargs,
                 )
+
+                print("ENTER 4.12")
 
                 # Update total batch CE and Z loss.
                 ce_batch_loss += get_local_tensor(ce_loss.detach())

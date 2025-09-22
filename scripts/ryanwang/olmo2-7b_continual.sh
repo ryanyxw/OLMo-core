@@ -19,7 +19,7 @@
 
 # this is training a llama2_271M (adjustable through `--model-factory`)
 
-runname="olmo2_7B_multinode_test"
+runname="olmo2_7B_pubmed_vanilla"
 python -m olmo_core.launch.beaker \
 	--name $runname \
 	--gpus 8 \

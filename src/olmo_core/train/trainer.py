@@ -1275,10 +1275,16 @@ class Trainer:
         for callback in self._iter_callbacks():
             callback.pre_epoch()
 
+        print("ENTER 1")
+
         self.train_module.zero_grads()
+
+        print("ENTER 2")
 
         first_batch = True
         for batch in self._iter_batches():
+
+            print("ENTER 3")
             # Bookkeeping.
             self.global_step += 1
             if (
@@ -1289,10 +1295,16 @@ class Trainer:
             for callback in self._iter_callbacks():
                 callback.pre_step(batch)
 
+            print("ENTER 4")
+
             self.train_module.train_batch(batch)
+
+            print("ENTER 5")
 
             for callback in self._iter_callbacks():
                 callback.pre_optim_step()
+
+            print("ENTER 6")
 
             self.train_module.optim_step()
             self.train_module.zero_grads()

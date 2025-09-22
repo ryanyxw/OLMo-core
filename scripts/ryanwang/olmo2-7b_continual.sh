@@ -34,7 +34,7 @@ CUDA_LAUNCH_BLOCKING=1 python -m olmo_core.launch.beaker \
 	--shared-filesystem \
 	--env-secret HF_TOKEN=RYAN_HF_TOKEN \
   --env-secret WANDB_API_KEY=RYAN_WANDB_API_KEY \
-	-- src/scripts/train/olmo2-7b_continual.py \
+	-- CUDA_LAUNCH_BLOCKING=1 src/scripts/train/olmo2-7b_continual.py \
 		$runname \
 		--model-factory=olmo2_190M \
 		--sequence-length=1024 \

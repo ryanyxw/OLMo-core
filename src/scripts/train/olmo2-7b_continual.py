@@ -202,7 +202,7 @@ def build_config(opts, overrides: List[str]) -> ExperimentConfig:
         float8_config=Float8Config(enabled=False),
         z_loss_multiplier=1e-5,
         max_grad_norm=1.0,
-        scheduler=CosWithWarmup(warmup_steps=2000),
+        scheduler=CosWithWarmup(warmup_steps=100),
     )
 
     trainer_config = (
@@ -216,8 +216,8 @@ def build_config(opts, overrides: List[str]) -> ExperimentConfig:
         .with_callback(
             "checkpointer",
             CheckpointerCallback(
-                save_interval=1000,
-                ephemeral_save_interval=100,
+                save_interval=400,
+                ephemeral_save_interval=200,
                 save_async=True,
             ),
         )

@@ -130,6 +130,9 @@ def train(config: ExperimentConfig):
     trainer = config.trainer.build(train_module, data_loader)
     # docs: end-build-components
 
+    import pdb
+    pdb.set_trace()
+
     # Save config to W&B and each checkpoint dir.
     config_dict = config.as_config_dict()
     cast(ConfigSaverCallback, trainer.callbacks["config_saver"]).config = config_dict

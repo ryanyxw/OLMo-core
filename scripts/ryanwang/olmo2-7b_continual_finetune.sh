@@ -19,27 +19,27 @@
 
 # this is training a llama2_271M (adjustable through `--model-factory`)
 
-runname="olmo2_7B_pubmed_vanilla"
+runname="olmo2_7B_pubmed_vanilla_finetune"
 python -m olmo_core.launch.beaker \
 	--name $runname \
 	--gpus 8 \
-	--nodes 2 \
+	--nodes 4 \
 	--budget ai2/oe-base \
 	--workspace ai2/flex2 \
 	--cluster ai2/jupiter \
-	--priority urgent \
+	--priority high \
 	--preemptible \
 	--torchrun \
 	--weka=oe-training-default \
 	--shared-filesystem \
 	--env-secret HF_TOKEN=RYAN_HF_TOKEN \
   --env-secret WANDB_API_KEY=RYAN_WANDB_API_KEY \
-	-- src/scripts/train/olmo2-7b_continual.py \
+	-- src/scripts/train/olmo2-7b_continual_finetune.py \
 		$runname \
 		--model-factory=olmo2_7B \
 		--sequence-length=4096 \
 		--trainer.save_folder=/weka/oe-training-default/ryanwang/phdbrainstorm/models/$runname \
-		--work-dir="/weka/oe-training-default/ryanwang/dataset-cache" \
+		--work-dir="/weka/oe-training-default/ryanwang/dataset-cache-${runname}" \
 		--trainer.callbacks.wandb="{enabled: true, entity: ryanyxw, project: olmo2_7B, name: ${runname}}" \
 
 

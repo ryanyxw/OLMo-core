@@ -47,7 +47,7 @@ runname="olmo2_7B_multinode_test"
 #	--allow-dirty \
 #		--trainer.max_duration='{value: 130_000_000_000, unit: tokens}' \
 
-torchrun nproc-per-node=2 src/scripts/train/olmo2-7b_continual.py \
+torchrun --nproc-per-node=2 src/scripts/train/olmo2-7b_continual.py \
 		$runname \
 		--model-factory=olmo2_190M \
 		--sequence-length=1024 \

@@ -22,6 +22,7 @@ from olmo_core.data import (
     NumpyDatasetConfig,
     NumpyDatasetType,
     TokenizerConfig,
+    DataMix,
 )
 from olmo_core.data.types import NumpyDatasetDType
 from olmo_core.distributed.parallel import DataParallelType
@@ -83,10 +84,11 @@ log = logging.getLogger(__name__)
 # ]
 # EVAL_DATA_PATHS = [f"{DATA_ROOT}/c4-validation.00000-00008.npy"]
 
-prefix = "/weka/oe-training-default/ryanwang/phdbrainstorm/data/pubmed_orig/tokenized/part-{num}-00000.npy"
+# prefix = "/weka/oe-training-default/ryanwang/phdbrainstorm/data/pubmed_orig/tokenized/part-{num}-00000.npy"
 # prefix = "/root/phdbrainstorm/data/pubmed_orig/tokenized/part-{num}-00000.npy"
+DATA_ROOT = "/weka/oe-training-default/ryanwang/phdbrainstorm"
 
-DATA_PATHS = [prefix.format(num=str(i).zfill(3)) for i in range(128)]
+# DATA_PATHS = [prefix.format(num=str(i).zfill(3)) for i in range(128)]
 
 GLOBAL_BATCH_SIZE = 1024
 MICRO_BATCH_SIZE = 2
@@ -172,13 +174,26 @@ def build_config(opts, overrides: List[str]) -> ExperimentConfig:
     )
     # docs: end-model-config
 
-    dataset_config = NumpyDatasetConfig(
-        paths=DATA_PATHS,
+    # dataset_config = NumpyDatasetConfig(
+    #     paths=DATA_PATHS,
+    #     name=NumpyDatasetType.fsl,
+    #     sequence_length=opts.sequence_length,
+    #     tokenizer=tokenizer_config,
+    #     work_dir=work_dir,
+    #     dtype=NumpyDatasetDType.uint32,
+    # )
+    dataset_config = NumpyDatasetConfig.from_data_mix(
+        DataMix.pubmed_original, # defualts to pubmed_origina, can change later
         name=NumpyDatasetType.fsl,
-        sequence_length=opts.sequence_length,
         tokenizer=tokenizer_config,
+        mix_base_dir=DATA_ROOT,
+        sequence_length=opts.sequence_length, # when changing anything related to sequence length, make sure to also consider train_module_config.max_sequence_length
+        max_target_sequence_length=max(8192, opts.sequence_length),
+        min_sequence_length=min(256, opts.sequence_length),
+        max_sequence_length=max(8192, opts.sequence_length),
         work_dir=work_dir,
-        dtype=NumpyDatasetDType.uint32,
+        generate_doc_lengths=False,
+        instance_filter_config=None
     )
 
     data_loader_config = NumpyDataLoaderConfig(

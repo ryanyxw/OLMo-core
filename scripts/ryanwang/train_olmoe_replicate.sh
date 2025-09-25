@@ -30,9 +30,9 @@ python -m olmo_core.launch.beaker \
 	--env-secret "WANDB_API_KEY=RYAN_WANDB_API_KEY" "BEAKER_TOKEN=RYAN_BEAKER_TOKEN" "AWS_ACCESS_KEY_ID=RYAN_AWS_ACCESS_KEY_ID" "AWS_SECRET_ACCESS_KEY=RYAN_AWS_SECRET_ACCESS_KEY" \
 	-- src/scripts/train/olmoe-1B-7B.py \
     $runname \
-		--save-folder="/weka/oe-training-default/$USER/$runname" \
+		--save-folder="/weka/oe-training-default/ryanwang/$runname" \
 		--dataset.mix=OLMoE-mix-0824 \
-		--work-dir="/weka/oe-training-default/$USER/dataset-cache" \
+		--work-dir="/weka/oe-training-default/ryanwang/dataset-cache" \
 		--trainer.no_checkpoints \
 		--trainer.hard_stop='{value: 100, unit: steps}' \
 		--trainer.max_duration='{value: 130_000_000_000, unit: tokens}' \

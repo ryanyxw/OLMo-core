@@ -18,8 +18,8 @@
 runname="olmoe-pretrain-replicate"
 python -m olmo_core.launch.beaker \
   --name $runname \
-	--gpus 4 \
-  --nodes 1 \
+	--gpus 8 \
+  --nodes 8 \
 	--weka=oe-training-default \
   --shared-filesystem \
 	--workspace ai2/flex2 \

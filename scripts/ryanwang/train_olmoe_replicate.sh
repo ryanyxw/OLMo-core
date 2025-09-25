@@ -33,8 +33,6 @@ python -m olmo_core.launch.beaker \
 		--save-folder="/weka/oe-training-default/ryanwang/$runname" \
 		--dataset.mix=OLMoE-mix-0824 \
 		--work-dir="/weka/oe-training-default/ryanwang/dataset-cache" \
-		--trainer.no_checkpoints \
-		--trainer.hard_stop='{value: 100, unit: steps}' \
 		--trainer.max_duration='{value: 130_000_000_000, unit: tokens}' \
 		--trainer.callbacks.wandb="{enabled: true, entity: ryanyxw, project: olmoe-modular, name: ${runname}}" \
 

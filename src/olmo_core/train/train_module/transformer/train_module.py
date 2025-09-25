@@ -352,9 +352,11 @@ class TransformerTrainModule(TrainModule):
 
         # Calculate and record how many tokens are going to be used in the loss.
         batch_num_tokens = batch["labels"].numel()
+
         batch_num_tokens_for_loss = move_to_device(
             (batch["labels"] != self.label_ignore_index).sum(), self.device
         )
+
         self.record_metric(
             "train/masked labels (%)",
             (batch_num_tokens - batch_num_tokens_for_loss) / batch_num_tokens,
@@ -364,6 +366,7 @@ class TransformerTrainModule(TrainModule):
         # Batch losses to record.
         ce_batch_loss = move_to_device(torch.tensor(0.0), self.device)
         z_batch_loss: Optional[torch.Tensor] = None
+
         if self.z_loss_multiplier is not None:
             z_batch_loss = move_to_device(torch.tensor(0.0), self.device)
 
@@ -378,6 +381,7 @@ class TransformerTrainModule(TrainModule):
         # Train one micro-batch at a time.
         for micro_batch_idx, micro_batch in enumerate(micro_batches):
             with self._train_microbatch_context(micro_batch_idx, num_micro_batches):
+
                 input_ids, labels, model_kwargs = self._prepare_batch(micro_batch)
 
                 # Run forward pass, get losses.

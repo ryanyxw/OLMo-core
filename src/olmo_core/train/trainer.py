@@ -1279,6 +1279,7 @@ class Trainer:
 
         first_batch = True
         for batch in self._iter_batches():
+
             # Bookkeeping.
             self.global_step += 1
             if (

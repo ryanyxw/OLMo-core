@@ -983,6 +983,7 @@ class MoETransformer(Transformer):
         from olmo_core.train.common import ReduceType
 
         mean_offset = 1.0
+        # ryanwang: pp = pipeline parallelism
         if self.pp_enabled:
             # Change the divisor to 'world_size // pp_group_size'
             mean_offset = self._pp_group_size
@@ -993,6 +994,7 @@ class MoETransformer(Transformer):
                 continue
             block = cast(MoETransformerBlock, block)
             block_metrics = block.compute_metrics(reset=reset)
+            # ryanwang: compute metrics for each block and push to wandb
             for metric_name, (metric_val, reduce_type) in block_metrics.items():
                 out[f"block {int(block_idx):02d}/{metric_name}"] = (
                     metric_val,

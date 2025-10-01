@@ -9,7 +9,7 @@ from olmo_core.doc_utils import beta_feature
 from olmo_core.exceptions import OLMoConfigurationError
 from olmo_core.utils import ensure_multiple_of
 
-from ..attention import AttentionConfig, AttentionType
+from ..attention import AttentionBackendName, AttentionConfig, AttentionType
 from ..buffer_cache import BufferCache
 from ..feed_forward import FeedForwardConfig, FeedForwardType
 from ..layer_norm import LayerNormConfig, LayerNormType
@@ -506,7 +506,7 @@ class TransformerConfig(Config):
     @classmethod
     def olmo2_1B(cls, vocab_size: int, **kwargs) -> "TransformerConfig":
         """
-        A 1B OLMo model config.
+        A 1B OLMo2 model config.
 
         This is different from the OLMo 1B from the old OLMo trainer.
         """
@@ -523,7 +523,7 @@ class TransformerConfig(Config):
     @classmethod
     def olmo2_1B_v2(cls, vocab_size: int, **kwargs) -> "TransformerConfig":
         """
-        A 1B OLMo model config.
+        A 1B OLMo2 model config.
 
         This matches the OLMo 1B from the old OLMo trainer.
         """
@@ -540,6 +540,9 @@ class TransformerConfig(Config):
 
     @classmethod
     def olmo2_3B(cls, vocab_size: int, **kwargs) -> "TransformerConfig":
+        """
+        A 3B OLMo2 model config.
+        """
         return cls.llama_like(
             d_model=3328,
             hidden_size_multiplier=1.5,
@@ -556,7 +559,7 @@ class TransformerConfig(Config):
     @classmethod
     def olmo2_7B(cls, vocab_size: int, **kwargs) -> "TransformerConfig":
         """
-        A 7B OLMo model config.
+        A 7B OLMo2 model config.
         """
         return cls.llama2_7B(
             vocab_size,
@@ -570,7 +573,7 @@ class TransformerConfig(Config):
     @classmethod
     def olmo2_13B(cls, vocab_size: int, **kwargs) -> "TransformerConfig":
         """
-        A 13B OLMo model config.
+        A 13B OLMo2 model config.
         """
         return cls.llama2_13B(
             vocab_size,
@@ -584,7 +587,7 @@ class TransformerConfig(Config):
     @classmethod
     def olmo2_32B(cls, vocab_size: int, **kwargs) -> "TransformerConfig":
         """
-        A 32B OLMo model config.
+        A 32B OLMo2 model config.
         """
         d_model = 5120
         return cls.llama_like(
@@ -875,7 +878,8 @@ class TransformerConfig(Config):
         hidden_size_multiple_of: int = 256,
         hidden_size_multiplier: Optional[float] = None,
         fused_ops: bool = False,
-        use_flash: bool = False,
+        use_flash: Optional[bool] = None,
+        attn_backend: Optional[AttentionBackendName] = None,
         block_name: TransformerBlockType = TransformerBlockType.default,
         block_mods: Optional[
             Dict[int, Callable[[TransformerBlockConfig], TransformerBlockConfig]]
@@ -892,7 +896,6 @@ class TransformerConfig(Config):
         :param hidden_size_multiple_of: Ensure the FFN hidden size is a multiple of this value.
         :param hidden_size_multiplier: Custom multiplier for the FFN hidden size.
         :param fused_ops: Use fused operations where possible.
-        :param use_flash: Use flash-attn.
         :param block_mods: A dictionary of block indices to functions that take the base block config and return a modified block config.
         :param dtype: The default data type to use for all parameters.
         """
@@ -933,6 +936,7 @@ class TransformerConfig(Config):
                 rope=RoPEConfig(name=rope_type, theta=rope_theta, scaling=rope_scaling),
                 qk_norm=layer_norm if qk_norm else None,
                 use_flash=use_flash,
+                backend=attn_backend,
                 dtype=dtype,
             ),
             feed_forward=feed_forward,

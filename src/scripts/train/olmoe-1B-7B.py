@@ -20,7 +20,7 @@ from olmo_core.data import (
     InstanceFilterConfig,
     NumpyDataLoaderConfig,
     NumpyDatasetConfig,
-    NumpyDatasetType,
+    NumpyVSLDatasetConfig,
     TokenizerConfig,
     VSLCurriculumConfig,
     VSLCurriculumType,
@@ -172,7 +172,7 @@ def build_config(opts, overrides: List[str]) -> ExperimentConfig:
 
     log.info(f"Using data root: {DATA_ROOT}")
 
-    dataset_config = NumpyDatasetConfig.from_data_mix(
+    dataset_config = NumpyVSLDatasetConfig.from_data_mix(
         DataMix.OLMo_mix_0625,
         tokenizer=tokenizer_config,
         mix_base_dir=DATA_ROOT,
@@ -229,7 +229,7 @@ def build_config(opts, overrides: List[str]) -> ExperimentConfig:
         .with_callback(
             "checkpointer",
             CheckpointerCallback(
-                save_interval=1000,
+                save_interval=5000,
                 ephemeral_save_interval=100,
                 save_async=True,
             ),

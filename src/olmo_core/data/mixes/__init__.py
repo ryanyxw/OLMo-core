@@ -36,6 +36,7 @@ class DataMix(DataMixBase):
     """
 
     OLMoE_mix_0824 = "OLMoE-mix-0824"
+    mose_unbalanced_1012 = "mose-unbalanced-1012"
     dolma17 = "dolma17"
     v3_small_ppl_validation = "v3-small-ppl-validation"
     OLMo_mix_0625 = "OLMo-mix-0625"

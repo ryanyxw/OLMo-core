@@ -229,7 +229,7 @@ def build_config(opts, overrides: List[str]) -> ExperimentConfig:
         .with_callback(
             "checkpointer",
             CheckpointerCallback(
-                save_interval=1000,
+                save_interval=5000,
                 ephemeral_save_interval=100,
                 save_async=True,
             ),

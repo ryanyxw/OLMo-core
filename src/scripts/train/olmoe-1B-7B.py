@@ -341,6 +341,7 @@ def parser_args():
 
 def main():
     opts, overrides = parser_args()
+    # note that this function basically initializes all the classes but does not actually call build on them
     config = build_config(opts, overrides)
 
     if opts.dry_run:

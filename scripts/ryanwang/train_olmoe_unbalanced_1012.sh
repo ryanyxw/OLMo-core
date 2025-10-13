@@ -28,11 +28,10 @@ python -m olmo_core.launch.beaker \
 	--allow-dirty \
 	--priority urgent \
 	--env-secret "WANDB_API_KEY=RYAN_WANDB_API_KEY" "BEAKER_TOKEN=RYAN_BEAKER_TOKEN" "AWS_ACCESS_KEY_ID=RYAN_AWS_ACCESS_KEY_ID" "AWS_SECRET_ACCESS_KEY=RYAN_AWS_SECRET_ACCESS_KEY" \
-	-- ls /weka && ls /weka/oe-training-default && ls /weka/oe-training-default/ai2-llm/preprocessed && ls /weka/oe-training-default/ai2-llm/preprocessed/starcorder/v1-decon-100_to_20k-2star-top_token_030 && ls
-#	-- src/scripts/train/olmoe-1B-7B.py \
-#    $runname \
-#		--save-folder="/weka/oe-training-default/ryanwang/phdbrainstorm/models/$runname" \
-#		--dataset.mix=mose-unbalanced-1012 \
-#		--work-dir="/weka/oe-training-default/ryanwang/dataset-cache" \
-#		--trainer.max_duration='{value: 130_000_000_000, unit: tokens}' \
-#		--trainer.callbacks.wandb="{enabled: true, entity: ryanyxw, project: olmoe-modular, name: ${runname}}" \
+	-- src/scripts/train/olmoe-1B-7B.py \
+    $runname \
+		--save-folder="/weka/oe-training-default/ryanwang/phdbrainstorm/models/$runname" \
+		--dataset.mix=mose-unbalanced-1012 \
+		--work-dir="/weka/oe-training-default/ryanwang/dataset-cache" \
+		--trainer.max_duration='{value: 130_000_000_000, unit: tokens}' \
+		--trainer.callbacks.wandb="{enabled: true, entity: ryanyxw, project: olmoe-modular, name: ${runname}}" \
